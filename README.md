@@ -1,50 +1,112 @@
-# Welcome to your Expo app 👋
+# 📍 WayPoint - Background Proximity Alarm & Navigation App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**WayPoint** is a React Native mobile application built on Expo SDK 54. The app provides persistent background geofence perimeter monitoring, sending immediate high-priority push notifications, audio alarm tones, and vibration alerts when a user enters a custom target radius (100m to 5km). 
 
-## Get started
+It features a **100% free, token-less open-source geospatial architecture** powered by Komoot Photon, OSRM Routing, and OpenStreetMap tiles, with dedicated **location search optimizations for India**.
 
-1. Install dependencies
+---
 
+## ✨ Features
+
+- 🔔 **Background Proximity Geofencing**: Operates in the background using `expo-location` and `expo-task-manager` (`WAYPOINT_PROXIMITY_TASK`). Triggers sound, vibration, and push notification alerts even when the phone screen is locked or the app process is terminated.
+- 🌐 **Decoupled 100% Free Geospatial API Layer**:
+  - **Map Graphic Tiles**: Rendered via OpenStreetMap / OpenFreeMap raster tile mirror (`UrlTile` with `maximumZ={19}`).
+  - **Komoot Photon Autocomplete**: Keystroke search with 300ms debouncing and spatial coordinate biasing (`lat`/`lon`).
+  - **OSRM Route Calculation Engine**: Real-time driving directions polyline drawing (`Polyline`) connecting your current location to the target destination.
+- 🇮🇳 **India Region Optimizations**: Native geocoding tuned for Indian cities, localities, stations, and PIN codes (`countrycodes=in`), pre-populated with popular Indian metro waypoints (Bengaluru, Mumbai, Delhi-NCR, Hyderabad, Chennai, Kolkata, Pune).
+- 📍 **Draggable Target Marker Pin**: Touch, hold, and drag the marker pin anywhere on the map to manually set or refine destination coordinates.
+- 🎚️ **Interactive Perimeter Radius Slider**: Adjust alarm radius from **100 meters up to 5.0 kilometers** in real time, with instant visual circle scaling.
+- 🎯 **Floating Re-Center GPS Button**: One-tap floating action button (FAB) that smoothly animates the map camera back to your live GPS coordinates.
+- 📱 **Collapsible Bottom Control Panel**: Minimizes the bottom control card into a sleek compact bar for an unobstructed view of the map.
+- ⚙️ **Customizable Alarm Options**: Selectable notification sound tones (*Urgent Radar*, *Gentle Chime*, *Emergency Siren*, *Classic Bell*), vibration patterns, and in-app alert popups.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js 20+
+- Expo Go app on your iOS / Android phone, or an Android Emulator / iOS Simulator.
+
+### Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/your-username/WayPoint.git
+   cd WayPoint
+   ```
+
+2. **Install dependencies:**
    ```bash
    npm install
    ```
 
-2. Start the app
-
+3. **Start the Expo development server:**
    ```bash
    npx expo start
    ```
 
-In the output, you'll find options to open the app in a
+4. **Run on your device:**
+   - **Android / iOS Physical Phone**: Scan the QR code in your terminal using **Expo Go**.
+   - **Android Emulator**: Press `a` in your terminal.
+   - **iOS Simulator**: Press `i` in your terminal.
+   - **Web Browser**: Press `w` in your terminal.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+---
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## 📦 Building an Android APK for Free on GitHub
 
-## Get a fresh project
+This repository includes a pre-configured **GitHub Actions Workflow** ([`.github/workflows/build-apk.yml`](.github/workflows/build-apk.yml)) to compile a standalone, installable `.apk` file for free directly on GitHub without requiring local Android Studio tools.
 
-When you're ready, run:
+### How to Trigger the APK Build on GitHub:
+1. Push your code to GitHub:
+   ```bash
+   git add .
+   git commit -m "Update WayPoint app"
+   git push origin main
+   ```
+2. Navigate to your GitHub Repository $\rightarrow$ **Actions** tab.
+3. Select **Build WayPoint Android APK** $\rightarrow$ Click **Run workflow**.
+4. Once completed (~3-5 minutes), scroll down to **Artifacts** and download your `WayPoint-v1.0.0-build-X-APK` file.
 
-```bash
-npm run reset-project
+---
+
+## 📁 Project Architecture
+
+```
+WayPoint/
+├── app/
+│   ├── _layout.tsx         # Root layout, WaypointProvider & background task entry
+│   └── index.tsx           # Main Map Screen (MapView, Marker, Circle, Polyline, UrlTile)
+├── components/
+│   ├── SearchBar.tsx       # Floating header search bar with 300ms Photon debouncing
+│   ├── RadiusSliderWidget.tsx # Collapsible bottom card widget with perimeter slider
+│   ├── AlarmOptionsModal.tsx # Alarm tone sound & vibration selector modal
+│   ├── AlarmAlertModal.tsx   # Simultaneous in-app arrival alert popup
+│   └── PermissionModal.tsx   # Pre-flight location & notification permission handler
+├── context/
+│   └── WaypointContext.tsx # React Context managing geofence state, routes & permissions
+├── services/
+│   ├── apiService.ts       # Decoupled network APIs (Komoot Photon & OSRM Routing)
+│   └── backgroundTask.ts   # Global TaskManager definition ('WAYPOINT_PROXIMITY_TASK')
+├── .github/
+│   └── workflows/
+│       └── build-apk.yml   # GitHub Actions workflow for building Android release APKs
+├── app.json                # Expo configuration with location background modes & Android versionCode
+└── package.json
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+---
 
-## Learn more
+## 🔒 Permissions Required
 
-To learn more about developing your project with Expo, look at the following resources:
+WayPoint uses a pre-flight permission flow:
+1. **Foreground Location**: To display your current position and calculate distance/route.
+2. **Background Location ("Allow all the time")**: Required by iOS/Android to trigger proximity notifications when your phone screen is locked or app is closed.
+3. **Local Push Notifications**: To deliver high-priority sound and vibration alert popups upon arrival.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+---
 
-## Join the community
+## 📄 License
 
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+This project is open-source under the MIT License.
