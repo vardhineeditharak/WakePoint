@@ -1,0 +1,49 @@
+name: Build WayPoint Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📁 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: ☕ Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: 🤖 Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 📦 Install Dependencies
+        run: npm install
+
+      - name: 🏗️ Generate Native Android Project (Expo Prebuild)
+        run: npx expo prebuild --platform android --clean
+
+      - name: ⚙️ Build Android Release APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: 📤 Upload APK Artifact to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: WayPoint-v1.0.0-build-${{ github.run_number }}-APK
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30

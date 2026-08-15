@@ -22,6 +22,8 @@
       }
     },
     "android": {
+      "package": "com.waypoint.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#0F172A",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
