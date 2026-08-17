@@ -34,10 +34,11 @@ jobs:
         run: npm install
 
       - name: 🏷️ Auto-Increment VersionCode & Extract Version
+        id: version_info
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
-          echo "BUILD_NUMBER=${{ github.run_number }}" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "build_number=${{ github.run_number }}" >> $GITHUB_OUTPUT
           
           # Inject GitHub run_number into Android versionCode in app.json
           node -e "
@@ -60,11 +61,11 @@ jobs:
       - name: 📦 Prepare Release Artifact
         run: |
           mkdir -p build_output
-          cp android/app/build/outputs/apk/release/app-release.apk build_output/WakePoint-v${{ env.APP_VERSION }}-build-${{ env.BUILD_NUMBER }}.apk
+          cp android/app/build/outputs/apk/release/app-release.apk "build_output/WakePoint-v${{ steps.version_info.outputs.version }}-build-${{ steps.version_info.outputs.build_number }}.apk"
 
       - name: 📤 Upload APK Artifact to GitHub
         uses: actions/upload-artifact@v4
         with:
-          name: WakePoint-v${{ env.APP_VERSION }}-build-${{ env.BUILD_NUMBER }}-APK
-          path: build_output/WakePoint-v${{ env.APP_VERSION }}-build-${{ env.BUILD_NUMBER }}.apk
+          name: "WakePoint-v${{ steps.version_info.outputs.version }}-build-${{ steps.version_info.outputs.build_number }}-APK"
+          path: "build_output/WakePoint-v${{ steps.version_info.outputs.version }}-build-${{ steps.version_info.outputs.build_number }}.apk"
           retention-days: 30
