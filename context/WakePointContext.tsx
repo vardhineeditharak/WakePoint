@@ -1,10 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Alert } from 'react-native';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { Alert, Platform } from 'react-native';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
-import { WAYPOINT_PROXIMITY_TASK, setupNotificationChannel } from '../services/backgroundTask';
+import { WAKEPOINT_PROXIMITY_TASK, setupNotificationChannel } from '../services/backgroundTask';
 import { photonSearch, calculateRoutePath, GeoCoordinate } from '../services/apiService';
+import { alarmSoundService, AlarmTone, VibrationStyle } from '../services/alarmSoundService';
 
 export interface Destination {
   latitude: number;
@@ -14,8 +16,8 @@ export interface Destination {
 }
 
 export interface AlarmOptions {
-  soundTone: 'radar' | 'chime' | 'siren' | 'bell';
-  vibrationStyle: 'pulse' | 'heavy' | 'gentle';
+  soundTone: AlarmTone;
+  vibrationStyle: VibrationStyle;
   repeatAlert: boolean;
 }
 
@@ -35,16 +37,19 @@ export interface PresetLocation {
   iconName: string;
 }
 
-interface WaypointContextType {
+export interface WakePointContextType {
   destination: Destination | null;
   radius: number; // in meters (100 to 5000)
   isAlarmActive: boolean;
+  isAlarmRinging: boolean;
   permissions: PermissionStatus;
   userLocation: Location.LocationObject | null;
+  currentDistanceMeters: number | null;
   alarmOptions: AlarmOptions;
   searchQuery: string;
   searchResults: Destination[];
   isSearching: boolean;
+  isSearchFocused: boolean;
   routeCoordinates: GeoCoordinate[];
   routeDistanceMeters: number;
   routeDurationSeconds: number;
@@ -52,11 +57,12 @@ interface WaypointContextType {
   showPermissionModal: boolean;
   permissionErrorMessage: string;
   showAlarmAlertModal: boolean;
-  
+
   // Actions
   setDestination: (dest: Destination | null) => void;
   setRadius: (radius: number) => void;
   setAlarmOptions: (options: Partial<AlarmOptions>) => void;
+  setIsSearchFocused: (focused: boolean) => void;
   toggleAlarm: () => Promise<void>;
   requestAllPermissions: () => Promise<boolean>;
   searchDestinations: (query: string) => Promise<void>;
@@ -66,13 +72,16 @@ interface WaypointContextType {
   testTriggerNotification: () => Promise<void>;
   dismissPermissionModal: () => void;
   dismissAlarmAlertModal: () => void;
+  stopAlarmRinging: () => Promise<void>;
+  snoozeAlarm: (minutes?: number) => Promise<void>;
+  previewAlarmTone: (tone: AlarmTone) => Promise<void>;
   triggerSimultaneousAlarm: () => Promise<void>;
 }
 
 const DEFAULT_ALARM_OPTIONS: AlarmOptions = {
   soundTone: 'radar',
   vibrationStyle: 'pulse',
-  repeatAlert: false,
+  repeatAlert: true,
 };
 
 export const PRESET_DESTINATIONS: PresetLocation[] = [
@@ -142,40 +151,58 @@ export const PRESET_DESTINATIONS: PresetLocation[] = [
   },
 ];
 
-const WaypointContext = createContext<WaypointContextType | undefined>(undefined);
+// Helper: Haversine distance in meters
+function computeHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // Earth radius in meters
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
 
-export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [destination, setDestinationState] = useState<Destination | null>({
-    latitude: 12.9756,
-    longitude: 77.6066,
-    title: 'MG Road Central Metro Station',
-    address: 'Bengaluru, Karnataka - 560001',
-  });
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return Math.round(R * c);
+}
+
+const WakePointContext = createContext<WakePointContextType | undefined>(undefined);
+
+export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [destination, setDestinationState] = useState<Destination | null>(null);
   const [radius, setRadiusState] = useState<number>(1000); // Default 1000m (1km)
   const [isAlarmActive, setIsAlarmActive] = useState<boolean>(false);
+  const [isAlarmRinging, setIsAlarmRinging] = useState<boolean>(false);
   const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
+  const [currentDistanceMeters, setCurrentDistanceMeters] = useState<number | null>(null);
   const [alarmOptions, setAlarmOptionsState] = useState<AlarmOptions>(DEFAULT_ALARM_OPTIONS);
-  
+
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<Destination[]>([]);
   const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [isSearchFocused, setIsSearchFocused] = useState<boolean>(false);
 
   // Routing State
   const [routeCoordinates, setRouteCoordinates] = useState<GeoCoordinate[]>([]);
   const [routeDistanceMeters, setRouteDistanceMeters] = useState<number>(0);
   const [routeDurationSeconds, setRouteDurationSeconds] = useState<number>(0);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState<boolean>(false);
-  
+
   const [showPermissionModal, setShowPermissionModal] = useState<boolean>(false);
   const [permissionErrorMessage, setPermissionErrorMessage] = useState<string>('');
   const [showAlarmAlertModal, setShowAlarmAlertModal] = useState<boolean>(false);
-  
+
   const [permissions, setPermissions] = useState<PermissionStatus>({
     foregroundGranted: false,
     backgroundGranted: false,
     notificationsGranted: false,
     isChecking: true,
   });
+
+  const locationWatchSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const snoozeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasTriggeredArrivalRef = useRef<boolean>(false);
 
   useEffect(() => {
     setupNotificationChannel();
@@ -184,11 +211,68 @@ export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, []);
 
   useEffect(() => {
-    Location.hasStartedGeofencingAsync(WAYPOINT_PROXIMITY_TASK)
+    Location.hasStartedGeofencingAsync(WAKEPOINT_PROXIMITY_TASK)
       .then((active) => setIsAlarmActive(active))
-      .catch((err) => console.log('Geofence status check:', err.message));
+      .catch((err) => console.log('[WakePoint] Geofence status check:', err.message));
   }, []);
 
+  // Real-time GPS location watcher for precise in-app distance and instant alarm trigger
+  useEffect(() => {
+    let isMounted = true;
+
+    async function startLocationWatch() {
+      try {
+        const fg = await Location.getForegroundPermissionsAsync();
+        if (!fg.granted) return;
+
+        if (locationWatchSubscriptionRef.current) {
+          locationWatchSubscriptionRef.current.remove();
+        }
+
+        locationWatchSubscriptionRef.current = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.High,
+            distanceInterval: 5, // Update every 5 meters
+            timeInterval: 3000,  // Or every 3 seconds
+          },
+          (loc) => {
+            if (!isMounted) return;
+            setUserLocation(loc);
+
+            if (destination) {
+              const dist = computeHaversineDistance(
+                loc.coords.latitude,
+                loc.coords.longitude,
+                destination.latitude,
+                destination.longitude
+              );
+              setCurrentDistanceMeters(dist);
+
+              // Check if entered proximity circle and alarm is active
+              if (isAlarmActive && dist <= radius && !hasTriggeredArrivalRef.current) {
+                hasTriggeredArrivalRef.current = true;
+                triggerSimultaneousAlarm();
+              }
+            }
+          }
+        );
+      } catch (err) {
+        console.warn('[WakePoint] watchPosition error:', err);
+      }
+    }
+
+    startLocationWatch();
+
+    return () => {
+      isMounted = false;
+      if (locationWatchSubscriptionRef.current) {
+        locationWatchSubscriptionRef.current.remove();
+        locationWatchSubscriptionRef.current = null;
+      }
+    };
+  }, [destination, isAlarmActive, radius]);
+
+  // Update route path when destination or location changes
   const updateRoute = useCallback(async () => {
     if (!destination || !userLocation) {
       setRouteCoordinates([]);
@@ -218,7 +302,7 @@ export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setRouteCoordinates([]);
       }
     } catch (error) {
-      console.error('Route calculation error:', error);
+      console.error('[WakePoint] Route calculation error:', error);
       setRouteCoordinates([]);
     } finally {
       setIsCalculatingRoute(false);
@@ -229,16 +313,27 @@ export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     updateRoute();
   }, [updateRoute]);
 
+  const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
   const checkPermissionsSilently = async () => {
     try {
       const fg = await Location.getForegroundPermissionsAsync();
       const bg = await Location.getBackgroundPermissionsAsync();
-      const notif = await Notifications.getPermissionsAsync();
+      let notifGranted = true;
+
+      if (!isExpoGo || Platform.OS !== 'android') {
+        try {
+          const notif = await Notifications.getPermissionsAsync();
+          notifGranted = notif.granted;
+        } catch (e) {
+          notifGranted = true;
+        }
+      }
 
       setPermissions({
         foregroundGranted: fg.granted,
         backgroundGranted: bg.granted,
-        notificationsGranted: notif.granted,
+        notificationsGranted: notifGranted,
         isChecking: false,
       });
     } catch (e) {
@@ -251,7 +346,7 @@ export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const fgStatus = await Location.requestForegroundPermissionsAsync();
       if (!fgStatus.granted) {
         setPermissionErrorMessage(
-          'Foreground location permission is required so WayPoint can track distance to your target destination.'
+          'Foreground location permission is required so WakePoint can monitor your distance to your target destination.'
         );
         setShowPermissionModal(true);
         setPermissions((p) => ({ ...p, foregroundGranted: false }));
@@ -261,19 +356,28 @@ export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const bgStatus = await Location.requestBackgroundPermissionsAsync();
       if (!bgStatus.granted) {
         setPermissionErrorMessage(
-          'Background location permission ("Allow all the time") is required for WayPoint to trigger arrival alerts when your app is closed.'
+          'Background location permission ("Allow all the time") is required for WakePoint to ring alarms when the app is minimized.'
         );
         setShowPermissionModal(true);
         setPermissions((p) => ({ ...p, foregroundGranted: true, backgroundGranted: false }));
         return false;
       }
 
-      const notifStatus = await Notifications.requestPermissionsAsync({
-        ios: { allowAlert: true, allowSound: true, allowBadge: true },
-      });
-      if (!notifStatus.granted) {
+      let notifGranted = true;
+      if (!isExpoGo || Platform.OS !== 'android') {
+        try {
+          const notifStatus = await Notifications.requestPermissionsAsync({
+            ios: { allowAlert: true, allowSound: true, allowBadge: true },
+          });
+          notifGranted = notifStatus.granted;
+        } catch (e) {
+          notifGranted = true;
+        }
+      }
+
+      if (!notifGranted) {
         setPermissionErrorMessage(
-          'Notification permission is required to sound proximity alerts when you enter your target radius.'
+          'Notification permission is required so WakePoint can send arrival alerts.'
         );
         setShowPermissionModal(true);
         setPermissions({
@@ -293,27 +397,40 @@ export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
       return true;
     } catch (error) {
-      console.error('Error requesting permissions:', error);
+      console.error('[WakePoint] Error requesting permissions:', error);
       return false;
     }
   };
 
   const fetchUserCurrentLocation = async () => {
     try {
-      const fg = await Location.getForegroundPermissionsAsync();
+      let fg = await Location.getForegroundPermissionsAsync();
+      if (!fg.granted) {
+        fg = await Location.requestForegroundPermissionsAsync();
+      }
       if (fg.granted) {
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
         setUserLocation(loc);
+        if (destination) {
+          const dist = computeHaversineDistance(
+            loc.coords.latitude,
+            loc.coords.longitude,
+            destination.latitude,
+            destination.longitude
+          );
+          setCurrentDistanceMeters(dist);
+        }
       }
     } catch (e) {
-      console.log('Error fetching user position:', e);
+      console.log('[WakePoint] Error fetching user position:', e);
     }
   };
 
   const setDestination = (dest: Destination | null) => {
     setDestinationState(dest);
+    hasTriggeredArrivalRef.current = false;
     if (Haptics.impactAsync) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
@@ -335,14 +452,14 @@ export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const startGeofencing = async (dest: Destination, r: number) => {
     try {
-      const isAlreadyRunning = await Location.hasStartedGeofencingAsync(WAYPOINT_PROXIMITY_TASK);
+      const isAlreadyRunning = await Location.hasStartedGeofencingAsync(WAKEPOINT_PROXIMITY_TASK);
       if (isAlreadyRunning) {
-        await Location.stopGeofencingAsync(WAYPOINT_PROXIMITY_TASK);
+        await Location.stopGeofencingAsync(WAKEPOINT_PROXIMITY_TASK);
       }
 
-      await Location.startGeofencingAsync(WAYPOINT_PROXIMITY_TASK, [
+      await Location.startGeofencingAsync(WAKEPOINT_PROXIMITY_TASK, [
         {
-          identifier: `WAYPOINT_PIN_${Date.now()}`,
+          identifier: `WAKEPOINT_PIN_${Date.now()}`,
           latitude: dest.latitude,
           longitude: dest.longitude,
           radius: r,
@@ -350,21 +467,21 @@ export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           notifyOnExit: false,
         },
       ]);
-      console.log(`[WayPoint] Geofence active for ${dest.title} with radius ${r}m`);
+      console.log(`[WakePoint] Geofence active for ${dest.title} with radius ${r}m`);
     } catch (error: any) {
-      console.error('[WayPoint] Failed to start geofence:', error.message);
+      console.error('[WakePoint] Failed to start geofence:', error.message);
     }
   };
 
   const stopGeofencing = async () => {
     try {
-      const isRunning = await Location.hasStartedGeofencingAsync(WAYPOINT_PROXIMITY_TASK);
+      const isRunning = await Location.hasStartedGeofencingAsync(WAKEPOINT_PROXIMITY_TASK);
       if (isRunning) {
-        await Location.stopGeofencingAsync(WAYPOINT_PROXIMITY_TASK);
+        await Location.stopGeofencingAsync(WAKEPOINT_PROXIMITY_TASK);
       }
-      console.log('[WayPoint] Geofence stopped.');
+      console.log('[WakePoint] Geofence stopped.');
     } catch (error: any) {
-      console.error('[WayPoint] Failed to stop geofence:', error.message);
+      console.error('[WakePoint] Failed to stop geofence:', error.message);
     }
   };
 
@@ -379,7 +496,9 @@ export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     if (isAlarmActive) {
       await stopGeofencing();
+      await stopAlarmRinging();
       setIsAlarmActive(false);
+      hasTriggeredArrivalRef.current = false;
     } else {
       if (!destination) {
         Alert.alert('No Target Selected', 'Please select or search a location on the map before activating the alarm.');
@@ -391,6 +510,7 @@ export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return;
       }
 
+      hasTriggeredArrivalRef.current = false;
       await startGeofencing(destination, radius);
       setIsAlarmActive(true);
     }
@@ -462,7 +582,7 @@ export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setSearchResults(filteredPresets);
       }
     } catch (err) {
-      console.error('Search destinations error:', err);
+      console.error('[WakePoint] Search destinations error:', err);
     } finally {
       setIsSearching(false);
     }
@@ -487,35 +607,65 @@ export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           accuracy: Location.Accuracy.High,
         });
         setUserLocation(loc);
+        if (destination) {
+          const dist = computeHaversineDistance(
+            loc.coords.latitude,
+            loc.coords.longitude,
+            destination.latitude,
+            destination.longitude
+          );
+          setCurrentDistanceMeters(dist);
+        }
       }
     } catch (e) {
-      console.log('Location fetch error:', e);
+      console.log('[WakePoint] Location fetch error:', e);
     }
   };
 
   /**
-   * Triggers simultaneous haptic sound vibration, active in-app modal, and local push notification
+   * Triggers the full ringing alarm: loud looping audio, repeating vibration, and full-screen modal
    */
   const triggerSimultaneousAlarm = async () => {
-    // 1. Haptic Sound Vibration
-    if (Haptics.notificationAsync) {
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-
-    // 2. Show In-App Alarm Alert Modal
+    setIsAlarmRinging(true);
     setShowAlarmAlertModal(true);
 
-    // 3. Schedule High Priority Local Push Notification
+    // 1. Play continuous loud alarm audio + continuous rhythmic vibration
+    await alarmSoundService.startAlarm(alarmOptions.soundTone, alarmOptions.vibrationStyle);
+
+    // 2. High priority notification
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: '📍 Waypoint Reached!',
-        body: `You have entered your target location radius: ${destination?.title || 'Target Destination'}`,
+        title: '🚨 WAKE UP! Arrival Alarm!',
+        body: `You are inside the perimeter of: ${destination?.title || 'Your Destination'}`,
         sound: 'default',
         priority: Notifications.AndroidNotificationPriority.MAX,
-        vibrate: [0, 250, 250, 250, 500, 250],
+        vibrate: [0, 500, 200, 500, 200, 1000],
       },
       trigger: null,
     });
+  };
+
+  const stopAlarmRinging = async () => {
+    setIsAlarmRinging(false);
+    setShowAlarmAlertModal(false);
+    await alarmSoundService.stopAlarm();
+  };
+
+  const snoozeAlarm = async (minutes = 5) => {
+    await stopAlarmRinging();
+    if (snoozeTimerRef.current) {
+      clearTimeout(snoozeTimerRef.current);
+    }
+    snoozeTimerRef.current = setTimeout(() => {
+      if (isAlarmActive) {
+        hasTriggeredArrivalRef.current = false;
+        triggerSimultaneousAlarm();
+      }
+    }, minutes * 60 * 1000);
+  };
+
+  const previewAlarmTone = async (tone: AlarmTone) => {
+    await alarmSoundService.previewTone(tone);
   };
 
   const testTriggerNotification = async () => {
@@ -527,21 +677,24 @@ export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const dismissAlarmAlertModal = () => {
-    setShowAlarmAlertModal(false);
+    stopAlarmRinging();
   };
 
   return (
-    <WaypointContext.Provider
+    <WakePointContext.Provider
       value={{
         destination,
         radius,
         isAlarmActive,
+        isAlarmRinging,
         permissions,
         userLocation,
+        currentDistanceMeters,
         alarmOptions,
         searchQuery,
         searchResults,
         isSearching,
+        isSearchFocused,
         routeCoordinates,
         routeDistanceMeters,
         routeDurationSeconds,
@@ -552,6 +705,7 @@ export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setDestination,
         setRadius,
         setAlarmOptions,
+        setIsSearchFocused,
         toggleAlarm,
         requestAllPermissions,
         searchDestinations,
@@ -561,18 +715,25 @@ export const WaypointProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         testTriggerNotification,
         dismissPermissionModal,
         dismissAlarmAlertModal,
+        stopAlarmRinging,
+        snoozeAlarm,
+        previewAlarmTone,
         triggerSimultaneousAlarm,
       }}
     >
       {children}
-    </WaypointContext.Provider>
+    </WakePointContext.Provider>
   );
 };
 
-export const useWaypoint = () => {
-  const context = useContext(WaypointContext);
+export const useWakePoint = () => {
+  const context = useContext(WakePointContext);
   if (!context) {
-    throw new Error('useWaypoint must be used within a WaypointProvider');
+    throw new Error('useWakePoint must be used within a WakePointProvider');
   }
   return context;
 };
+
+// Aliases for seamless backward compatibility
+export const WaypointProvider = WakePointProvider;
+export const useWaypoint = useWakePoint;
