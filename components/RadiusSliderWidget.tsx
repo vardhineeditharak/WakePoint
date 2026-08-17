@@ -8,25 +8,41 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  Alert,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
-import { useWaypoint } from '../context/WaypointContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWakePoint } from '../context/WakePointContext';
 import { AlarmOptionsModal } from './AlarmOptionsModal';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+const PRESET_RADII = [
+  { label: '250m', value: 250 },
+  { label: '500m', value: 500 },
+  { label: '1 km', value: 1000 },
+  { label: '2 km', value: 2000 },
+  { label: '5 km', value: 5000 },
+];
+
 export const RadiusSliderWidget: React.FC = () => {
+  const insets = useSafeAreaInsets();
+  const bottomOffset = Math.max(insets.bottom, 12) + 8;
   const {
     destination,
+    setDestination,
     radius,
     setRadius,
     isAlarmActive,
     toggleAlarm,
-    permissions,
-  } = useWaypoint();
+    currentDistanceMeters,
+    routeDistanceMeters,
+    routeDurationSeconds,
+    isSearchFocused,
+  } = useWakePoint();
 
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
@@ -34,7 +50,7 @@ export const RadiusSliderWidget: React.FC = () => {
 
   const toggleMinimize = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setIsMinimized(!isMinimized);
+    setIsMinimized((prev) => !prev);
   };
 
   const handleToggle = async () => {
@@ -46,49 +62,65 @@ export const RadiusSliderWidget: React.FC = () => {
     }
   };
 
+  const handleDiscardLocation = () => {
+    if (isAlarmActive) {
+      Alert.alert(
+        'Discard Destination',
+        'This will turn off the active arrival alarm and clear your pinned destination. Continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Discard & Turn Off',
+            style: 'destructive',
+            onPress: async () => {
+              await toggleAlarm();
+              setDestination(null);
+            },
+          },
+        ]
+      );
+    } else {
+      setDestination(null);
+    }
+  };
+
   const formatDistance = (meters: number): string => {
     if (meters >= 1000) {
-      const km = (meters / 1000).toFixed(meters % 500 === 0 ? 1 : 2);
-      return `${km} km`;
+      return `${(meters / 1000).toFixed(1)} km`;
     }
     return `${meters} m`;
   };
 
+  const formatDuration = (seconds: number): string => {
+    const mins = Math.ceil(seconds / 60);
+    if (mins >= 60) {
+      const hrs = Math.floor(mins / 60);
+      const remMins = mins % 60;
+      return `${hrs}h ${remMins}m`;
+    }
+    return `${mins} min`;
+  };
+
+  if (isSearchFocused) {
+    return null;
+  }
+
   return (
-    <View style={styles.container}>
-      {/* Alarm Options Modal */}
+    <View style={[styles.container, { bottom: bottomOffset }]}>
       <AlarmOptionsModal
         visible={showOptionsModal}
         onClose={() => setShowOptionsModal(false)}
       />
 
       <View style={[styles.card, isMinimized && styles.cardMinimized]}>
-        {/* Top Header Row with Collapse/Expand Handle */}
+        {/* Top Header Row with Status, Destination & Controls */}
         <View style={styles.headerRow}>
-          <View style={styles.destInfo}>
-            <Text style={styles.destLabel}>TARGET DESTINATION</Text>
-            <Text style={styles.destTitle} numberOfLines={1}>
-              {destination ? destination.title : 'Tap map or drag marker'}
-            </Text>
-          </View>
-
-          <View style={styles.headerActions}>
-            {!isMinimized && (
-              <TouchableOpacity
-                style={styles.optionsIconBtn}
-                onPress={() => setShowOptionsModal(true)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="options-outline" size={20} color="#818CF8" />
-              </TouchableOpacity>
-            )}
-
-            <View
-              style={[
-                styles.statusBadge,
-                isAlarmActive ? styles.statusBadgeActive : styles.statusBadgeStandby,
-              ]}
-            >
+          <TouchableOpacity
+            style={styles.destInfoCol}
+            onPress={isMinimized ? toggleMinimize : undefined}
+            activeOpacity={isMinimized ? 0.7 : 1}
+          >
+            <View style={styles.statusRow}>
               <View
                 style={[
                   styles.statusDot,
@@ -101,70 +133,126 @@ export const RadiusSliderWidget: React.FC = () => {
                   isAlarmActive ? styles.statusTextActive : styles.statusTextStandby,
                 ]}
               >
-                {isAlarmActive ? 'ACTIVE' : 'STANDBY'}
+                {isAlarmActive ? 'ALARM ACTIVE' : 'READY'}
               </Text>
             </View>
+            <Text style={styles.destTitle} numberOfLines={1}>
+              {destination ? destination.title : 'Tap map or search destination'}
+            </Text>
+          </TouchableOpacity>
 
-            {/* Minimize / Expand Chevron Handle */}
+          {/* Header Action Buttons */}
+          <View style={styles.headerActions}>
+            {destination && (
+              <TouchableOpacity
+                style={styles.discardBtn}
+                onPress={handleDiscardLocation}
+                activeOpacity={0.7}
+                accessibilityLabel="Discard destination"
+              >
+                <Ionicons name="trash-outline" size={15} color="#F87171" />
+              </TouchableOpacity>
+            )}
+
+            {!isMinimized && (
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => setShowOptionsModal(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="settings-sharp" size={16} color="#818CF8" />
+              </TouchableOpacity>
+            )}
+
+            {/* Minimize / Expand Button */}
             <TouchableOpacity
-              style={styles.minimizeBtn}
+              style={styles.iconBtn}
               onPress={toggleMinimize}
               activeOpacity={0.7}
             >
               <Ionicons
                 name={isMinimized ? 'chevron-up-sharp' : 'chevron-down-sharp'}
-                size={20}
+                size={18}
                 color="#94A3B8"
               />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Minimized Compact View Bar */}
+        {/* Minimized View Bar */}
         {isMinimized ? (
           <View style={styles.minimizedRow}>
             <View style={styles.minimizedBadge}>
-              <Ionicons name="radio-outline" size={14} color="#818CF8" />
+              <Ionicons name="radio-outline" size={13} color="#818CF8" />
               <Text style={styles.minimizedBadgeText}>Radius: {formatDistance(radius)}</Text>
             </View>
+
+            {destination && currentDistanceMeters !== null && (
+              <View style={styles.minimizedBadge}>
+                <Ionicons name="navigate-outline" size={13} color="#34D399" />
+                <Text style={styles.minimizedBadgeText}>{formatDistance(currentDistanceMeters)}</Text>
+              </View>
+            )}
 
             <TouchableOpacity
               style={[
                 styles.compactToggleBtn,
-                isAlarmActive ? styles.toggleBtnActive : styles.toggleBtnInactive,
-                !destination && styles.toggleBtnDisabled,
+                isAlarmActive ? styles.compactToggleBtnActive : styles.compactToggleBtnInactive,
+                !destination && styles.compactToggleBtnDisabled,
               ]}
               onPress={handleToggle}
               disabled={!destination || isToggling}
               activeOpacity={0.8}
             >
               <Ionicons
-                name={isAlarmActive ? 'stop' : 'power'}
-                size={16}
+                name={isAlarmActive ? 'stop' : 'notifications'}
+                size={14}
                 color="#FFFFFF"
               />
               <Text style={styles.compactToggleText}>
-                {isAlarmActive ? 'Stop' : 'Start'}
+                {isAlarmActive ? 'Turn Off' : 'Set Alarm'}
               </Text>
             </TouchableOpacity>
           </View>
         ) : (
           /* Full Expanded View */
           <>
-            {/* Perimeter Radius Control Header */}
-            <View style={styles.sliderHeaderRow}>
-              <View style={styles.sliderLabelGroup}>
-                <Ionicons name="radio-outline" size={16} color="#818CF8" />
-                <Text style={styles.sliderLabel}>Perimeter Radius</Text>
-              </View>
-              <View style={styles.radiusBadge}>
-                <Text style={styles.radiusBadgeText}>{formatDistance(radius)}</Text>
-              </View>
-            </View>
+            {/* Distance & ETA Info Strip (when destination selected) */}
+            {destination && (
+              <View style={styles.statsStrip}>
+                <View style={styles.statItem}>
+                  <Ionicons name="navigate-outline" size={14} color="#818CF8" />
+                  <Text style={styles.statLabel}>Distance: </Text>
+                  <Text style={styles.statValue}>
+                    {currentDistanceMeters !== null
+                      ? formatDistance(currentDistanceMeters)
+                      : routeDistanceMeters > 0
+                      ? formatDistance(routeDistanceMeters)
+                      : '--'}
+                  </Text>
+                </View>
 
-            {/* Radius Interactive Slider Component */}
-            <View style={styles.sliderContainer}>
-              <Text style={styles.sliderRangeText}>100m</Text>
+                <View style={styles.statDivider} />
+
+                <View style={styles.statItem}>
+                  <Ionicons name="time-outline" size={14} color="#34D399" />
+                  <Text style={styles.statLabel}>Est. Time: </Text>
+                  <Text style={styles.statValue}>
+                    {routeDurationSeconds > 0 ? formatDuration(routeDurationSeconds) : '< 1 min'}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Radius Slider Section */}
+            <View style={styles.sliderSection}>
+              <View style={styles.sliderHeader}>
+                <Text style={styles.sliderTitle}>Trigger Alarm Radius</Text>
+                <View style={styles.radiusPill}>
+                  <Text style={styles.radiusPillText}>{formatDistance(radius)}</Text>
+                </View>
+              </View>
+
               <Slider
                 style={styles.slider}
                 minimumValue={100}
@@ -176,25 +264,38 @@ export const RadiusSliderWidget: React.FC = () => {
                 maximumTrackTintColor="#334155"
                 thumbTintColor="#818CF8"
               />
-              <Text style={styles.sliderRangeText}>5.0km</Text>
+
+              {/* Quick Preset Chips */}
+              <View style={styles.presetsRow}>
+                {PRESET_RADII.map((preset) => {
+                  const isSelected = Math.abs(radius - preset.value) < 30;
+                  return (
+                    <TouchableOpacity
+                      key={preset.label}
+                      style={[styles.presetChip, isSelected && styles.presetChipSelected]}
+                      onPress={() => setRadius(preset.value)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.presetChipText,
+                          isSelected && styles.presetChipTextSelected,
+                        ]}
+                      >
+                        {preset.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
 
-            {/* Permission Hint if missing */}
-            {(!permissions.foregroundGranted || !permissions.backgroundGranted) && (
-              <View style={styles.permWarning}>
-                <Ionicons name="information-circle-sharp" size={14} color="#F59E0B" />
-                <Text style={styles.permWarningText}>
-                  Background location permission required for automatic alerts
-                </Text>
-              </View>
-            )}
-
-            {/* Primary Control Toggle Button */}
+            {/* Primary Action Button */}
             <TouchableOpacity
               style={[
-                styles.toggleBtn,
-                isAlarmActive ? styles.toggleBtnActive : styles.toggleBtnInactive,
-                !destination && styles.toggleBtnDisabled,
+                styles.actionBtn,
+                isAlarmActive ? styles.actionBtnActive : styles.actionBtnInactive,
+                !destination && styles.actionBtnDisabled,
               ]}
               onPress={handleToggle}
               disabled={!destination || isToggling}
@@ -205,12 +306,12 @@ export const RadiusSliderWidget: React.FC = () => {
               ) : (
                 <>
                   <Ionicons
-                    name={isAlarmActive ? 'stop-circle-sharp' : 'shield-checkmark-sharp'}
-                    size={22}
+                    name={isAlarmActive ? 'stop-circle-sharp' : 'notifications-sharp'}
+                    size={20}
                     color="#FFFFFF"
                   />
-                  <Text style={styles.toggleBtnText}>
-                    {isAlarmActive ? 'Deactivate Alarm' : 'Activate Location Alarm'}
+                  <Text style={styles.actionBtnText}>
+                    {isAlarmActive ? 'Turn Off Arrival Alarm' : 'Set Arrival Alarm'}
                   </Text>
                 </>
               )}
@@ -225,89 +326,41 @@ export const RadiusSliderWidget: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 24,
     left: 16,
     right: 16,
     zIndex: 100,
   },
   card: {
-    backgroundColor: 'rgba(15, 23, 42, 0.95)',
-    borderRadius: 24,
-    padding: 20,
+    backgroundColor: '#0F172A',
+    borderRadius: 22,
+    padding: 16,
     borderWidth: 1,
-    borderColor: 'rgba(51, 65, 85, 0.8)',
+    borderColor: '#334155',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.4,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.45,
     shadowRadius: 16,
     elevation: 10,
   },
   cardMinimized: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 14,
+    marginBottom: 8,
   },
-  destInfo: {
+  destInfoCol: {
     flex: 1,
-    marginRight: 10,
+    marginRight: 8,
   },
-  destLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#64748B',
-    letterSpacing: 1,
-  },
-  destTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#F8FAFC',
-    marginTop: 2,
-  },
-  headerActions: {
+  statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  optionsIconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(99, 102, 241, 0.3)',
-  },
-  minimizeBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: 'rgba(51, 65, 85, 0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
     gap: 5,
-  },
-  statusBadgeActive: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.4)',
-  },
-  statusBadgeStandby: {
-    backgroundColor: 'rgba(100, 116, 139, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(100, 116, 139, 0.3)',
+    marginBottom: 2,
   },
   statusDot: {
     width: 6,
@@ -331,126 +384,194 @@ const styles = StyleSheet.create({
   statusTextStandby: {
     color: '#94A3B8',
   },
-  minimizedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 4,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(51, 65, 85, 0.4)',
+  destTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#F8FAFC',
   },
-  minimizedBadge: {
+  headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
+  iconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(51, 65, 85, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(51, 65, 85, 0.6)',
+  },
+  discardBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  minimizedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(51, 65, 85, 0.35)',
+    gap: 6,
+  },
+  minimizedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
   minimizedBadgeText: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '600',
     color: '#A5B4FC',
   },
   compactToggleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    gap: 5,
+  },
+  compactToggleBtnInactive: {
+    backgroundColor: '#6366F1',
+  },
+  compactToggleBtnActive: {
+    backgroundColor: '#EF4444',
+  },
+  compactToggleBtnDisabled: {
+    backgroundColor: '#334155',
+    opacity: 0.6,
   },
   compactToggleText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
-  sliderHeaderRow: {
+  statsStrip: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(51, 65, 85, 0.4)',
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 12,
+    marginBottom: 10,
   },
-  sliderLabelGroup: {
+  statItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
-  sliderLabel: {
-    fontSize: 13,
+  statLabel: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '500',
+  },
+  statValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#F8FAFC',
+  },
+  statDivider: {
+    width: 1,
+    height: 14,
+    backgroundColor: '#334155',
+  },
+  sliderSection: {
+    marginBottom: 12,
+  },
+  sliderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  sliderTitle: {
+    fontSize: 12,
     fontWeight: '600',
     color: '#CBD5E1',
   },
-  radiusBadge: {
+  radiusPill: {
     backgroundColor: 'rgba(99, 102, 241, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#6366F1',
   },
-  radiusBadgeText: {
-    fontSize: 14,
+  radiusPillText: {
+    fontSize: 12,
     fontWeight: '700',
     color: '#A5B4FC',
   },
-  sliderContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
   slider: {
-    flex: 1,
-    height: 40,
-    marginHorizontal: 8,
+    height: 32,
+    marginHorizontal: -4,
   },
-  sliderRangeText: {
+  presetsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  presetChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: 'rgba(51, 65, 85, 0.5)',
+  },
+  presetChipSelected: {
+    backgroundColor: '#6366F1',
+    borderColor: '#6366F1',
+  },
+  presetChipText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#64748B',
+    color: '#94A3B8',
   },
-  permWarning: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    marginBottom: 12,
-    gap: 6,
+  presetChipTextSelected: {
+    color: '#FFFFFF',
   },
-  permWarningText: {
-    fontSize: 11,
-    color: '#FBBF24',
-    flex: 1,
-  },
-  toggleBtn: {
+  actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 16,
-    paddingVertical: 16,
-    gap: 10,
+    borderRadius: 14,
+    paddingVertical: 14,
+    gap: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
   },
-  toggleBtnInactive: {
+  actionBtnInactive: {
     backgroundColor: '#6366F1',
   },
-  toggleBtnActive: {
+  actionBtnActive: {
     backgroundColor: '#EF4444',
   },
-  toggleBtnDisabled: {
+  actionBtnDisabled: {
     backgroundColor: '#334155',
     opacity: 0.6,
   },
-  toggleBtnText: {
+  actionBtnText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0.3,
   },

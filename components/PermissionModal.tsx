@@ -7,16 +7,18 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useWaypoint } from '../context/WaypointContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWakePoint } from '../context/WakePointContext';
 
 export const PermissionModal: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const {
     showPermissionModal,
     permissionErrorMessage,
     dismissPermissionModal,
     requestAllPermissions,
     permissions,
-  } = useWaypoint();
+  } = useWakePoint();
 
   const handleGrant = async () => {
     dismissPermissionModal();
@@ -30,7 +32,7 @@ export const PermissionModal: React.FC = () => {
       transparent={true}
       onRequestClose={dismissPermissionModal}
     >
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, { paddingBottom: Math.max(insets.bottom, 20) + 10 }]}>
         <View style={styles.card}>
           <View style={styles.iconBadge}>
             <Ionicons name="shield-checkmark-sharp" size={32} color="#6366F1" />
@@ -39,7 +41,7 @@ export const PermissionModal: React.FC = () => {
           <Text style={styles.title}>Location & Alert Permissions</Text>
 
           <Text style={styles.description}>
-            WayPoint requires permissions to monitor your proximity perimeter in the background and send notification alerts.
+            WakePoint requires permissions to monitor your proximity perimeter in the background and sound arrival alarms.
           </Text>
 
           {/* Error Message callout */}
@@ -78,7 +80,7 @@ export const PermissionModal: React.FC = () => {
                 size={20}
                 color={permissions.notificationsGranted ? '#10B981' : '#64748B'}
               />
-              <Text style={styles.checkLabel}>Local Push Notifications</Text>
+              <Text style={styles.checkLabel}>Alarm Notifications & Alerts</Text>
             </View>
           </View>
 

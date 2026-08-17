@@ -1,15 +1,22 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
-import MapView, { Marker, Circle, Polyline, UrlTile, PROVIDER_DEFAULT } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
-import { useWaypoint } from '../context/WaypointContext';
-import { SearchBar } from '../components/SearchBar';
-import { RadiusSliderWidget } from '../components/RadiusSliderWidget';
-import { PermissionModal } from '../components/PermissionModal';
-import { AlarmAlertModal } from '../components/AlarmAlertModal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWakePoint } from '../context/WakePointContext';
+import {
+  WakeMapView,
+  WakeMapRef,
+  SearchBar,
+  RadiusSliderWidget,
+  PermissionModal,
+  AlarmAlertModal,
+} from '../components';
 
 export default function MainMapScreen() {
-  const mapRef = useRef<MapView | null>(null);
+  const insets = useSafeAreaInsets();
+  const topDockOffset = Math.max(insets.top, 16) + 64;
+  const mapRef = useRef<WakeMapRef | null>(null);
+  const [mapTheme, setMapTheme] = useState<'dark' | 'satellite' | 'streets'>('dark');
 
   const {
     destination,
@@ -17,49 +24,56 @@ export default function MainMapScreen() {
     isAlarmActive,
     userLocation,
     routeCoordinates,
-    routeDistanceMeters,
     setDestinationFromCoordinates,
     getCurrentLocation,
-  } = useWaypoint();
+    isSearchFocused,
+  } = useWakePoint();
 
-  // Animate map camera when destination changes
+  const hasCenteredInitialLocation = useRef(false);
+
+  // Auto-center on user's live position when location is first acquired
+  useEffect(() => {
+    if (userLocation && !destination && !hasCenteredInitialLocation.current && mapRef.current) {
+      hasCenteredInitialLocation.current = true;
+      mapRef.current.flyTo(userLocation.coords.latitude, userLocation.coords.longitude, 15);
+    }
+  }, [userLocation, destination]);
+
+  // Smoothly fly camera when destination changes
   useEffect(() => {
     if (destination && mapRef.current) {
-      mapRef.current.animateToRegion(
-        {
-          latitude: destination.latitude,
-          longitude: destination.longitude,
-          latitudeDelta: getLatitudeDeltaForRadius(radius),
-          longitudeDelta: getLatitudeDeltaForRadius(radius),
-        },
-        1000
-      );
+      mapRef.current.flyTo(destination.latitude, destination.longitude, 14);
     }
-  }, [destination, radius]);
+  }, [destination]);
+
+  // Fit bounds when route coordinates are calculated
+  useEffect(() => {
+    if (routeCoordinates && routeCoordinates.length > 1 && mapRef.current) {
+      mapRef.current.fitBounds(routeCoordinates);
+    }
+  }, [routeCoordinates]);
 
   const handleCenterUserLocation = async () => {
     await getCurrentLocation();
     if (userLocation && mapRef.current) {
-      mapRef.current.animateToRegion(
-        {
-          latitude: userLocation.coords.latitude,
-          longitude: userLocation.coords.longitude,
-          latitudeDelta: 0.02,
-          longitudeDelta: 0.02,
-        },
-        1000
-      );
+      mapRef.current.flyTo(userLocation.coords.latitude, userLocation.coords.longitude, 15);
     }
   };
 
-  const handleMapPress = (e: any) => {
-    const { latitude, longitude } = e.nativeEvent.coordinate;
-    setDestinationFromCoordinates(latitude, longitude);
+  const handleMapPress = (coord: { latitude: number; longitude: number }) => {
+    setDestinationFromCoordinates(coord.latitude, coord.longitude);
   };
 
-  const handleMarkerDragEnd = (e: any) => {
-    const { latitude, longitude } = e.nativeEvent.coordinate;
-    setDestinationFromCoordinates(latitude, longitude);
+  const handleMarkerDragEnd = (coord: { latitude: number; longitude: number }) => {
+    setDestinationFromCoordinates(coord.latitude, coord.longitude);
+  };
+
+  const cycleMapTheme = () => {
+    setMapTheme((prev) => {
+      if (prev === 'dark') return 'satellite';
+      if (prev === 'satellite') return 'streets';
+      return 'dark';
+    });
   };
 
   return (
@@ -67,199 +81,120 @@ export default function MainMapScreen() {
       {/* Permission Pre-Flight Modal */}
       <PermissionModal />
 
-      {/* Arrival Alarm Alert Popup Modal */}
+      {/* Arrival Alarm Alert Screen / Modal */}
       <AlarmAlertModal />
 
-      {/* Floating Top Search Bar Overlay */}
+      {/* Interactive Map Engine */}
+      <WakeMapView
+        ref={mapRef}
+        userLocation={
+          userLocation
+            ? { latitude: userLocation.coords.latitude, longitude: userLocation.coords.longitude }
+            : null
+        }
+        destination={destination}
+        radius={radius}
+        isAlarmActive={isAlarmActive}
+        mapTheme={mapTheme}
+        routeCoordinates={routeCoordinates}
+        onMapPress={handleMapPress}
+        onMarkerDragEnd={handleMarkerDragEnd}
+      />
+
+      {/* Top Search Bar */}
       <SearchBar onCenterUserLocation={handleCenterUserLocation} />
 
-      {/* Full-Screen Interactive MapView */}
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        provider={PROVIDER_DEFAULT}
-        userInterfaceStyle="dark"
-        showsUserLocation={true}
-        showsMyLocationButton={false}
-        showsCompass={true}
-        onPress={handleMapPress}
-        initialRegion={{
-          latitude: destination ? destination.latitude : 12.9756,
-          longitude: destination ? destination.longitude : 77.6066,
-          latitudeDelta: 0.04,
-          longitudeDelta: 0.04,
-        }}
-      >
-        {/* 1. Visual Tile Layer Engine (OpenStreetMap Raster Mirror) */}
-        <UrlTile
-          urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-          maximumZ={19}
-          maximumNativeZ={19}
-          tileSize={256}
-          shouldReplaceMapContent={false}
-        />
-
-        {/* 3. Route Calculation Engine Polyline */}
-        {routeCoordinates.length > 0 && (
-          <Polyline
-            coordinates={routeCoordinates}
-            strokeColor="#6366F1"
-            strokeWidth={4.5}
-            lineCap="round"
-            lineJoin="round"
-          />
-        )}
-
-        {/* Destination Lock Marker & Proximity Circle */}
-        {destination && (
-          <>
-            {/* Dynamic Semi-transparent Circle scaling in real-time with radius slider */}
-            <Circle
-              center={{
-                latitude: destination.latitude,
-                longitude: destination.longitude,
-              }}
-              radius={radius}
-              fillColor={
-                isAlarmActive
-                  ? 'rgba(16, 185, 129, 0.22)' // Active vibrant emerald green fill
-                  : 'rgba(99, 102, 241, 0.22)' // Standby vibrant indigo fill
-              }
-              strokeColor={isAlarmActive ? '#10B981' : '#6366F1'}
-              strokeWidth={2.5}
-              lineDashPattern={isAlarmActive ? undefined : [6, 4]}
+      {/* Clean Floating Right-Side Tool Dock (hidden while searching) */}
+      {!isSearchFocused && (
+        <View style={[styles.rightToolDock, { top: topDockOffset }]}>
+          <TouchableOpacity
+            style={styles.dockBtn}
+            onPress={cycleMapTheme}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={mapTheme === 'dark' ? 'moon' : mapTheme === 'satellite' ? 'earth' : 'map'}
+              size={18}
+              color="#818CF8"
             />
+            <Text style={styles.dockBtnText}>
+              {mapTheme === 'dark' ? 'Dark' : mapTheme === 'satellite' ? 'Sat' : 'Street'}
+            </Text>
+          </TouchableOpacity>
 
-            {/* Draggable Destination Pin Marker */}
-            <Marker
-              draggable={true}
-              onDragEnd={handleMarkerDragEnd}
-              coordinate={{
-                latitude: destination.latitude,
-                longitude: destination.longitude,
-              }}
-              title={destination.title}
-              description={`Hold & drag pin to reposition | Radius: ${
-                radius >= 1000 ? `${(radius / 1000).toFixed(1)}km` : `${radius}m`
-              }${routeDistanceMeters > 0 ? ` | Dist: ${(routeDistanceMeters / 1000).toFixed(1)}km` : ''}`}
-            >
-              <View style={styles.markerContainer}>
-                <View
-                  style={[
-                    styles.markerPin,
-                    isAlarmActive ? styles.markerPinActive : styles.markerPinInactive,
-                  ]}
-                >
-                  <Ionicons
-                    name={isAlarmActive ? 'shield-sharp' : 'location-sharp'}
-                    size={22}
-                    color="#FFFFFF"
-                  />
-                </View>
-                <View
-                  style={[
-                    styles.markerArrow,
-                    isAlarmActive ? styles.markerArrowActive : styles.markerArrowInactive,
-                  ]}
-                />
-              </View>
-            </Marker>
-          </>
-        )}
-      </MapView>
-
-      {/* Floating Instructions Bar when no target locked */}
-      {!destination && (
-        <View style={styles.hintBanner}>
-          <Ionicons name="finger-print-outline" size={18} color="#818CF8" />
-          <Text style={styles.hintText}>Tap anywhere or drag pin to set a target waypoint</Text>
+          <TouchableOpacity
+            style={styles.dockBtn}
+            onPress={handleCenterUserLocation}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="locate-sharp" size={20} color="#6366F1" />
+          </TouchableOpacity>
         </View>
       )}
 
-      {/* Floating Re-Center GPS Location FAB Button */}
-      <TouchableOpacity
-        style={styles.recenterFab}
-        onPress={handleCenterUserLocation}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="locate-sharp" size={24} color="#6366F1" />
-      </TouchableOpacity>
+      {/* Hint banner when no destination is locked (hidden while searching) */}
+      {!destination && !isSearchFocused && (
+        <View style={[styles.hintBanner, { top: topDockOffset }]}>
+          <Ionicons name="finger-print-outline" size={16} color="#818CF8" />
+          <Text style={styles.hintText}>Tap anywhere or search to set a target</Text>
+        </View>
+      )}
 
-      {/* Bottom Persistent Radius Slider Overlay */}
+      {/* Bottom Control Sheet */}
       <RadiusSliderWidget />
     </View>
   );
 }
 
-function getLatitudeDeltaForRadius(radiusMeters: number): number {
-  const delta = (radiusMeters * 3.2) / 111000;
-  return Math.max(0.015, Math.min(delta, 0.15));
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#0B0F19',
+  },
+  rightToolDock: {
+    position: 'absolute',
+    top: 115,
+    right: 16,
+    gap: 8,
+    zIndex: 90,
+  },
+  dockBtn: {
     backgroundColor: '#0F172A',
-  },
-  map: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  markerContainer: {
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  markerPin: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#334155',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
     shadowRadius: 8,
     elevation: 8,
+    minWidth: 44,
   },
-  markerPinInactive: {
-    backgroundColor: '#6366F1',
-  },
-  markerPinActive: {
-    backgroundColor: '#10B981',
-  },
-  markerArrow: {
-    width: 0,
-    height: 0,
-    backgroundColor: 'transparent',
-    borderStyle: 'solid',
-    borderLeftWidth: 6,
-    borderRightWidth: 6,
-    borderBottomWidth: 0,
-    borderTopWidth: 8,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    marginTop: -1,
-  },
-  markerArrowInactive: {
-    borderTopColor: '#6366F1',
-  },
-  markerArrowActive: {
-    borderTopColor: '#10B981',
+  dockBtnText: {
+    color: '#E2E8F0',
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginTop: 2,
   },
   hintBanner: {
     position: 'absolute',
-    top: 120,
-    alignSelf: 'center',
+    top: 115,
+    left: 16,
+    right: 76,
     backgroundColor: 'rgba(15, 23, 42, 0.92)',
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 20,
+    borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     borderWidth: 1,
-    borderColor: 'rgba(99, 102, 241, 0.4)',
+    borderColor: 'rgba(99, 102, 241, 0.35)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -269,26 +204,8 @@ const styles = StyleSheet.create({
   },
   hintText: {
     color: '#E2E8F0',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
-  },
-  recenterFab: {
-    position: 'absolute',
-    bottom: 270,
-    right: 18,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(15, 23, 42, 0.95)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#334155',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 8,
-    zIndex: 95,
+    flex: 1,
   },
 });
