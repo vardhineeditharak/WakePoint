@@ -33,6 +33,21 @@ jobs:
       - name: 📦 Install Dependencies
         run: npm install
 
+      - name: 🏷️ Auto-Increment VersionCode & Extract Version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "BUILD_NUMBER=${{ github.run_number }}" >> $GITHUB_ENV
+          
+          # Inject GitHub run_number into Android versionCode in app.json
+          node -e "
+            const fs = require('fs');
+            const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            app.expo.android.versionCode = ${{ github.run_number }};
+            fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
+            console.log('Configured Android versionCode:', ${{ github.run_number }});
+          "
+
       - name: 🏗️ Generate Native Android Project (Expo Prebuild)
         run: npx expo prebuild --platform android --clean
 
@@ -42,9 +57,14 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
+      - name: 📦 Prepare Release Artifact
+        run: |
+          mkdir -p build_output
+          cp android/app/build/outputs/apk/release/app-release.apk build_output/WakePoint-v${{ env.APP_VERSION }}-build-${{ env.BUILD_NUMBER }}.apk
+
       - name: 📤 Upload APK Artifact to GitHub
         uses: actions/upload-artifact@v4
         with:
-          name: WakePoint-v1.0.0-build-${{ github.run_number }}-APK
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: WakePoint-v${{ env.APP_VERSION }}-build-${{ env.BUILD_NUMBER }}-APK
+          path: build_output/WakePoint-v${{ env.APP_VERSION }}-build-${{ env.BUILD_NUMBER }}.apk
           retention-days: 30
