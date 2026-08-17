@@ -1,4 +1,4 @@
-name: Build WayPoint Android APK
+name: Build WakePoint Android APK
 
 on:
   workflow_dispatch:
@@ -45,6 +45,6 @@ jobs:
       - name: 📤 Upload APK Artifact to GitHub
         uses: actions/upload-artifact@v4
         with:
-          name: WayPoint-v1.0.0-build-${{ github.run_number }}-APK
+          name: WakePoint-v1.0.0-build-${{ github.run_number }}-APK
           path: android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30

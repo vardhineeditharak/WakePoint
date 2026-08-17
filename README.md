@@ -1,10 +1,14 @@
-# 📍 WayPoint - Background Proximity Alarm & Navigation App
+# 📍 WakePoint 🚀
 
-**WayPoint** is a React Native mobile application built on Expo SDK 54. The app provides persistent background geofence perimeter monitoring, sending immediate high-priority push notifications, audio alarm tones, and vibration alerts when a user enters a custom target radius (100m to 5km). 
-
-It features a **100% free, token-less open-source geospatial architecture** powered by Komoot Photon, OSRM Routing, and OpenStreetMap tiles, with dedicated **location search optimizations for India**.
+> **GPS Proximity Arrival Alarm & Dark Map Navigation App**  
+> Built with **React Native**, **Expo SDK 54**, **Hardware-Accelerated Dark Maps**, **Komoot Photon Geocoding**, **OSRM Routing Engine**, and **Continuous Audio/Vibration Alarm System**.
 
 ---
+
+## 🌟 What's New in WakePoint
+- **Uber-Style Smooth Dark Map Engine**: High-performance interactive dark map with fluid inertia panning, smooth `flyTo` camera animations, dynamic glowing route polylines, and real-time draggable pin & radius perimeter. **Requires zero Google API keys** and renders reliably in standalone Android `.apk` builds without blank grey tiles.
+- **Continuous Loud Ringing Alarm**: Instead of simple one-off notification pings, WakePoint rings loudly with looping audio synthesis (Urgent Radar, Emergency Siren, Classic Bell, Upbeat Chime) and multi-pulse continuous vibration until silenced or snoozed.
+- **Real-Time Distance Watcher**: Active GPS watcher measuring Haversine proximity distance in real time with live Trip HUD (Distance, ETA, Arm status).
 
 ## ✨ Features
 
@@ -74,25 +78,29 @@ This repository includes a pre-configured **GitHub Actions Workflow** ([`.github
 ## 📁 Project Architecture
 
 ```
-WayPoint/
+WakePoint/
 ├── app/
-│   ├── _layout.tsx         # Root layout, WaypointProvider & background task entry
-│   └── index.tsx           # Main Map Screen (MapView, Marker, Circle, Polyline, UrlTile)
+│   ├── _layout.tsx         # Root layout, SafeAreaProvider & WakePointProvider
+│   └── index.tsx           # Main Map Screen (WakeMapView, SearchBar, RadiusSliderWidget, Docks)
 ├── components/
+│   ├── index.ts            # Component barrel exports
+│   ├── WakeMapView.tsx     # Leaflet raster tile map engine (dark/satellite/street layers)
 │   ├── SearchBar.tsx       # Floating header search bar with 300ms Photon debouncing
-│   ├── RadiusSliderWidget.tsx # Collapsible bottom card widget with perimeter slider
+│   ├── RadiusSliderWidget.tsx # Collapsible & minimizable bottom card widget with perimeter slider
 │   ├── AlarmOptionsModal.tsx # Alarm tone sound & vibration selector modal
 │   ├── AlarmAlertModal.tsx   # Simultaneous in-app arrival alert popup
 │   └── PermissionModal.tsx   # Pre-flight location & notification permission handler
 ├── context/
-│   └── WaypointContext.tsx # React Context managing geofence state, routes & permissions
+│   └── WakePointContext.tsx # React Context managing geofence state, routes, alarm audio & permissions
 ├── services/
+│   ├── index.ts            # Service barrel exports
+│   ├── alarmSoundService.ts # Pure PCM audio wave synthesis & looping expo-av alarm engine
 │   ├── apiService.ts       # Decoupled network APIs (Komoot Photon & OSRM Routing)
-│   └── backgroundTask.ts   # Global TaskManager definition ('WAYPOINT_PROXIMITY_TASK')
+│   └── backgroundTask.ts   # Global TaskManager definition ('WAKEPOINT_PROXIMITY_TASK')
 ├── .github/
 │   └── workflows/
 │       └── build-apk.yml   # GitHub Actions workflow for building Android release APKs
-├── app.json                # Expo configuration with location background modes & Android versionCode
+├── app.json                # Expo configuration with location & audio background modes
 └── package.json
 ```
 
