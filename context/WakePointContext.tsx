@@ -4,7 +4,11 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
-import { WAKEPOINT_PROXIMITY_TASK, setupNotificationChannel } from '../services/backgroundTask';
+import {
+  WAKEPOINT_PROXIMITY_TASK,
+  setupNotificationChannel,
+  setSharedBackgroundTarget,
+} from '../services/backgroundTask';
 import { photonSearch, calculateRoutePath, GeoCoordinate } from '../services/apiService';
 import { alarmSoundService, AlarmTone, VibrationStyle } from '../services/alarmSoundService';
 
@@ -210,13 +214,10 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     fetchUserCurrentLocation();
   }, []);
 
-  useEffect(() => {
-    Location.hasStartedGeofencingAsync(WAKEPOINT_PROXIMITY_TASK)
-      .then((active) => setIsAlarmActive(active))
-      .catch((err) => console.log('[WakePoint] Geofence status check:', err.message));
-  }, []);
+  const lastRouteCalculatedPointRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastRouteDestinationRef = useRef<{ lat: number; lng: number } | null>(null);
 
-  // Real-time GPS location watcher for precise in-app distance and instant alarm trigger
+  // Power-efficient foreground GPS watcher (prevents battery drain & heating)
   useEffect(() => {
     let isMounted = true;
 
@@ -231,9 +232,9 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
         locationWatchSubscriptionRef.current = await Location.watchPositionAsync(
           {
-            accuracy: Location.Accuracy.High,
-            distanceInterval: 5, // Update every 5 meters
-            timeInterval: 3000,  // Or every 3 seconds
+            accuracy: Location.Accuracy.Balanced, // Saves up to 80% battery & stops CPU/GPS heating
+            distanceInterval: 12,                // Updates every 12 meters
+            timeInterval: 5000,                  // Every 5 seconds
           },
           (loc) => {
             if (!isMounted) return;
@@ -272,13 +273,35 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   }, [destination, isAlarmActive, radius]);
 
-  // Update route path when destination or location changes
+  // Throttled route path calculation (prevents continuous HTTP requests & CPU heating)
   const updateRoute = useCallback(async () => {
     if (!destination || !userLocation) {
       setRouteCoordinates([]);
       setRouteDistanceMeters(0);
       setRouteDurationSeconds(0);
+      lastRouteCalculatedPointRef.current = null;
+      lastRouteDestinationRef.current = null;
       return;
+    }
+
+    // Check if user has moved significantly (> 100m) or destination changed before hitting OSRM API
+    if (lastRouteCalculatedPointRef.current && lastRouteDestinationRef.current) {
+      const movedMeters = computeHaversineDistance(
+        userLocation.coords.latitude,
+        userLocation.coords.longitude,
+        lastRouteCalculatedPointRef.current.lat,
+        lastRouteCalculatedPointRef.current.lng
+      );
+      const destMovedMeters = computeHaversineDistance(
+        destination.latitude,
+        destination.longitude,
+        lastRouteDestinationRef.current.lat,
+        lastRouteDestinationRef.current.lng
+      );
+
+      if (movedMeters < 100 && destMovedMeters < 10) {
+        return; // Skip redundant API calculation
+      }
     }
 
     setIsCalculatingRoute(true);
@@ -298,6 +321,14 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setRouteCoordinates(routeData.coordinates);
         setRouteDistanceMeters(routeData.distanceMeters);
         setRouteDurationSeconds(routeData.durationSeconds);
+        lastRouteCalculatedPointRef.current = {
+          lat: userLocation.coords.latitude,
+          lng: userLocation.coords.longitude,
+        };
+        lastRouteDestinationRef.current = {
+          lat: destination.latitude,
+          lng: destination.longitude,
+        };
       } else {
         setRouteCoordinates([]);
       }
@@ -435,14 +466,14 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     if (isAlarmActive && dest) {
-      startGeofencing(dest, radius);
+      startBackgroundTracking(dest, radius);
     }
   };
 
   const setRadius = (newRadius: number) => {
     setRadiusState(newRadius);
     if (isAlarmActive && destination) {
-      startGeofencing(destination, newRadius);
+      startBackgroundTracking(destination, newRadius);
     }
   };
 
@@ -450,10 +481,41 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setAlarmOptionsState((prev) => ({ ...prev, ...options }));
   };
 
-  const startGeofencing = async (dest: Destination, r: number) => {
+  const startBackgroundTracking = async (dest: Destination, r: number) => {
     try {
-      const isAlreadyRunning = await Location.hasStartedGeofencingAsync(WAKEPOINT_PROXIMITY_TASK);
-      if (isAlreadyRunning) {
+      // 1. Sync target with background task memory
+      setSharedBackgroundTarget({
+        latitude: dest.latitude,
+        longitude: dest.longitude,
+        radius: r,
+        title: dest.title,
+        soundTone: alarmOptions.soundTone,
+        vibrationStyle: alarmOptions.vibrationStyle,
+      });
+
+      // 2. Start robust Foreground Service background location updates (for Android background execution immunity)
+      const isLocationUpdatesStarted = await Location.hasStartedLocationUpdatesAsync(WAKEPOINT_PROXIMITY_TASK);
+      if (isLocationUpdatesStarted) {
+        await Location.stopLocationUpdatesAsync(WAKEPOINT_PROXIMITY_TASK);
+      }
+
+      await Location.startLocationUpdatesAsync(WAKEPOINT_PROXIMITY_TASK, {
+        accuracy: Location.Accuracy.Balanced, // Power-efficient GPS & cell triangulation
+        timeInterval: 8000,                  // 8 seconds between ticks in background
+        distanceInterval: 15,                // 15 meters
+        deferredUpdatesInterval: 5000,
+        showsBackgroundLocationIndicator: true,
+        foregroundService: {
+          notificationTitle: `WakePoint Active: ${dest.title}`,
+          notificationBody: `Monitoring arrival perimeter (${r >= 1000 ? `${(r / 1000).toFixed(1)}km` : `${r}m`}). Tap to view.`,
+          notificationColor: '#6366F1',
+        },
+        pausesUpdatesAutomatically: false,
+      });
+
+      // 3. Start Geofencing as secondary hardware trigger
+      const isGeofenceStarted = await Location.hasStartedGeofencingAsync(WAKEPOINT_PROXIMITY_TASK);
+      if (isGeofenceStarted) {
         await Location.stopGeofencingAsync(WAKEPOINT_PROXIMITY_TASK);
       }
 
@@ -467,21 +529,30 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           notifyOnExit: false,
         },
       ]);
-      console.log(`[WakePoint] Geofence active for ${dest.title} with radius ${r}m`);
+
+      console.log(`[WakePoint] Background service & geofence active for ${dest.title} (Radius: ${r}m)`);
     } catch (error: any) {
-      console.error('[WakePoint] Failed to start geofence:', error.message);
+      console.error('[WakePoint] Failed to start background tracking:', error.message || error);
     }
   };
 
-  const stopGeofencing = async () => {
+  const stopBackgroundTracking = async () => {
     try {
-      const isRunning = await Location.hasStartedGeofencingAsync(WAKEPOINT_PROXIMITY_TASK);
-      if (isRunning) {
+      setSharedBackgroundTarget(null);
+
+      const isLocationUpdatesStarted = await Location.hasStartedLocationUpdatesAsync(WAKEPOINT_PROXIMITY_TASK);
+      if (isLocationUpdatesStarted) {
+        await Location.stopLocationUpdatesAsync(WAKEPOINT_PROXIMITY_TASK);
+      }
+
+      const isGeofenceStarted = await Location.hasStartedGeofencingAsync(WAKEPOINT_PROXIMITY_TASK);
+      if (isGeofenceStarted) {
         await Location.stopGeofencingAsync(WAKEPOINT_PROXIMITY_TASK);
       }
-      console.log('[WakePoint] Geofence stopped.');
+
+      console.log('[WakePoint] Background tracking stopped.');
     } catch (error: any) {
-      console.error('[WakePoint] Failed to stop geofence:', error.message);
+      console.error('[WakePoint] Failed to stop background tracking:', error.message || error);
     }
   };
 
@@ -495,7 +566,7 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     if (isAlarmActive) {
-      await stopGeofencing();
+      await stopBackgroundTracking();
       await stopAlarmRinging();
       setIsAlarmActive(false);
       hasTriggeredArrivalRef.current = false;
@@ -511,7 +582,7 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
 
       hasTriggeredArrivalRef.current = false;
-      await startGeofencing(destination, radius);
+      await startBackgroundTracking(destination, radius);
       setIsAlarmActive(true);
     }
   };

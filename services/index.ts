@@ -9,5 +9,8 @@ export {
 export {
   WAKEPOINT_PROXIMITY_TASK,
   setupNotificationChannel,
+  setSharedBackgroundTarget,
+  getSharedBackgroundTarget,
+  type BackgroundTarget,
   type ProximityTaskData,
 } from './backgroundTask';
