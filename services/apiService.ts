@@ -72,7 +72,7 @@ export async function photonSearch(
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'WayPoint-Mobile-App/1.0',
+        'User-Agent': 'WakePoint-Mobile-App/1.1',
       },
     });
 
@@ -164,7 +164,7 @@ export async function calculateRoutePath(
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'WayPoint-Routing-Engine/1.0',
+        'User-Agent': 'WakePoint-Routing-Engine/1.1',
       },
     });
 

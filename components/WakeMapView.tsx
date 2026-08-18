@@ -101,7 +101,7 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
   const initialLat = destination ? destination.latitude : userLocation ? userLocation.latitude : 12.9756;
   const initialLng = destination ? destination.longitude : userLocation ? userLocation.longitude : 77.6066;
 
-  const htmlContent = `
+  const htmlContent = React.useMemo(() => `
 <!DOCTYPE html>
 <html>
 <head>
@@ -349,7 +349,7 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
   </script>
 </body>
 </html>
-  `;
+  `, [initialLat, initialLng]);
 
   return (
     <View style={styles.container}>

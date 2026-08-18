@@ -67,6 +67,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({ onCenterUserLocation }) =>
 
   const handleSelectPreset = (item: PresetLocation) => {
     selectPresetDestination(item);
+    setInputText('');
     setIsFocused(false);
     setIsSearchFocused(false);
   };
