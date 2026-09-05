@@ -1,5 +1,9 @@
 # 📍 WakePoint
 
+<p align="center">
+  <img src="./assets/images/brand-banner.png" alt="WakePoint Hero Banner" width="100%" />
+</p>
+
 > **GPS Proximity Arrival Alarm & Dark Map Navigation App**  
 > Never miss your bus, train, or metro stop again. WakePoint wakes you up with continuous loud alarms and rhythmic vibrations the moment you enter your target destination perimeter.
 
@@ -115,6 +119,16 @@ You don't need Android Studio or a high-end machine to compile the installable `
 3. In the sidebar, select **Build WakePoint Android APK**.
 4. Click **Run workflow** $\rightarrow$ select branch `main` $\rightarrow$ click **Run workflow**.
 5. After ~3 to 5 minutes, open the completed workflow run, scroll down to **Artifacts**, and download your installable `WakePoint-v1.1.0-build-X-APK` file!
+
+---
+
+## 🎨 Design & Brand Identity
+
+The WakePoint identity is built on a minimal, non-letter geometric system: a precision geofence boundary circle enclosing concentric proximity wave rings and a central destination waypoint beacon.
+
+<p align="center">
+  <img src="./assets/images/brand-guidelines.png" alt="WakePoint Brand Guidelines" width="100%" />
+</p>
 
 ---
 
