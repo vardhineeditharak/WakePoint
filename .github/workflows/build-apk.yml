@@ -1,14 +1,86 @@
 name: Build WakePoint Android APK
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual trigger from GitHub Actions UI
   push:
     branches:
       - main
       - master
+    paths:
+      - 'package.json'
+      - 'app.json'
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
 
 jobs:
+  check-version:
+    name: 🔍 Check Version Update
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.version_detector.outputs.should_build }}
+      version: ${{ steps.version_detector.outputs.version }}
+    steps:
+      - name: 📁 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 🔎 Detect If Version Changed
+        id: version_detector
+        run: |
+          # 1. Check for manual workflow dispatch trigger
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            CURR_VER=$(node -p "require('./package.json').version" 2>/dev/null || echo "1.0.0")
+            echo "🚀 Manual dispatch trigger. Building version $CURR_VER."
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "version=$CURR_VER" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 2. Check for Git Tag push trigger (e.g. v1.2.0)
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            RAW_TAG="${GITHUB_REF#refs/tags/}"
+            TAG_VER="${RAW_TAG#v}"
+            echo "🏷️ Git tag push detected: $TAG_VER."
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "version=$TAG_VER" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 3. Determine base commit for diff comparison
+          BEFORE_SHA="${{ github.event.before }}"
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE_SHA="HEAD~1"
+          fi
+
+          CURR_VER=$(node -p "require('./package.json').version" 2>/dev/null || echo "")
+          PREV_VER=$(git show "${BEFORE_SHA}:package.json" 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync(0, 'utf-8')).version" 2>/dev/null || echo "")
+
+          echo "Previous Version: '$PREV_VER'"
+          echo "Current Version:  '$CURR_VER'"
+
+          if [ -n "$CURR_VER" ] && [ "$CURR_VER" != "$PREV_VER" ]; then
+            echo "🎉 Version updated: $PREV_VER -> $CURR_VER! Triggering Android APK build."
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "version=$CURR_VER" >> $GITHUB_OUTPUT
+          else
+            echo "ℹ️ Version was not modified (remains $CURR_VER). Skipping build."
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "version=$CURR_VER" >> $GITHUB_OUTPUT
+          fi
+
   build-apk:
+    name: 🤖 Build Android Release APK
+    needs: check-version
+    if: needs.check-version.outputs.should_build == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -33,39 +105,54 @@ jobs:
       - name: 📦 Install Dependencies
         run: npm install
 
-      - name: 🏷️ Auto-Increment VersionCode & Extract Version
-        id: version_info
+      - name: 🏷️ Sync Version & Configure Android versionCode
         run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "build_number=${{ github.run_number }}" >> $GITHUB_OUTPUT
+          VERSION="${{ needs.check-version.outputs.version }}"
+          BUILD_NUM="${{ github.run_number }}"
+          echo "Building WakePoint v$VERSION (Build $BUILD_NUM)"
           
-          # Inject GitHub run_number into Android versionCode in app.json
           node -e "
             const fs = require('fs');
             const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
-            app.expo.android.versionCode = ${{ github.run_number }};
+            app.expo.version = '$VERSION';
+            app.expo.android.versionCode = $BUILD_NUM;
             fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
-            console.log('Configured Android versionCode:', ${{ github.run_number }});
+            console.log('Synchronized app.json version to', '$VERSION', 'and versionCode to', $BUILD_NUM);
           "
 
       - name: 🏗️ Generate Native Android Project (Expo Prebuild)
         run: npx expo prebuild --platform android --clean
 
-      - name: ⚙️ Build Android Release APK
+      - name: ⚙️ Assemble Android Release APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
-      - name: 📦 Prepare Release Artifact
+      - name: 📦 Organize Release Artifacts
         run: |
           mkdir -p build_output
-          cp android/app/build/outputs/apk/release/app-release.apk "build_output/WakePoint-v${{ steps.version_info.outputs.version }}-build-${{ steps.version_info.outputs.build_number }}.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "build_output/WakePoint-v${{ needs.check-version.outputs.version }}-build-${{ github.run_number }}.apk"
 
-      - name: 📤 Upload APK Artifact to GitHub
+      - name: 📤 Upload APK Artifact to GitHub Actions
         uses: actions/upload-artifact@v4
         with:
-          name: "WakePoint-v${{ steps.version_info.outputs.version }}-build-${{ steps.version_info.outputs.build_number }}-APK"
-          path: "build_output/WakePoint-v${{ steps.version_info.outputs.version }}-build-${{ steps.version_info.outputs.build_number }}.apk"
+          name: "WakePoint-v${{ needs.check-version.outputs.version }}-build-${{ github.run_number }}-APK"
+          path: "build_output/WakePoint-v${{ needs.check-version.outputs.version }}-build-${{ github.run_number }}.apk"
           retention-days: 30
+
+      - name: 🚀 Publish GitHub Release with APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ needs.check-version.outputs.version }}"
+          name: "WakePoint v${{ needs.check-version.outputs.version }}"
+          body: |
+            ### 📱 WakePoint v${{ needs.check-version.outputs.version }} (Build ${{ github.run_number }})
+            
+            - **Target APK**: `WakePoint-v${{ needs.check-version.outputs.version }}-build-${{ github.run_number }}.apk`
+            - **Platform**: Android
+            - **Build Trigger**: Version update to v${{ needs.check-version.outputs.version }}
+          files: "build_output/WakePoint-v${{ needs.check-version.outputs.version }}-build-${{ github.run_number }}.apk"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
