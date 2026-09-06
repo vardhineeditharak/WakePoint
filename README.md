@@ -24,7 +24,7 @@ Public transit commuters, late-night travelers, and daily passengers often take 
 
 ## ✨ Key Features
 
-- 🗺️ **Zero API-Key Dark Map Engine**: Powered by an embedded Leaflet.js runtime using CartoDB Dark, Satellite, and OpenStreetMap tiles. Renders reliably on Android & iOS without Google Maps billing or blank grey tile bugs.
+- 🗺️ **Zero API-Key Dark Map Engine**: Powered by an embedded Leaflet.js runtime using OpenStreetMap, Satellite, and Streets tiles with hardware-accelerated dark styling. Renders reliably on Android & iOS without Google Maps billing, CartoDB API keys, or blank grey tile bugs.
 - 🔊 **Continuous Offline Audio Synthesis**: Plays loud, looping alarms using dynamically synthesized 16-bit PCM WAV base64 audio. Zero external audio file dependencies, fully offline.
   - *Tones available:* **Urgent Radar**, **Emergency Siren**, **Classic Bell**, and **Upbeat Chime**.
 - 📳 **Rhythmic Vibration System**: Multi-frequency continuous haptic pulse patterns (*Pulse*, *Heavy*, *Gentle*) that cut through deep sleep.
