@@ -6,9 +6,20 @@ import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
 import {
   WAKEPOINT_PROXIMITY_TASK,
+  WAKEPOINT_NOTIFICATION_CHANNEL,
+  WAKEPOINT_ACTIVE_CATEGORY,
+  ACTION_TURN_OFF_ALARM,
   setupNotificationChannel,
   setSharedBackgroundTarget,
+  encodeGeofenceIdentifier,
+  postOrUpdateActiveNotification,
+  dismissActiveNotification,
 } from '../services/backgroundTask';
+import {
+  saveAlarmSession,
+  loadAlarmSession,
+  clearAlarmSession,
+} from '../services/sessionStorage';
 import { photonSearch, calculateRoutePath, GeoCoordinate } from '../services/apiService';
 import { alarmSoundService, AlarmTone, VibrationStyle } from '../services/alarmSoundService';
 
@@ -72,7 +83,7 @@ export interface WakePointContextType {
   searchDestinations: (query: string) => Promise<void>;
   selectPresetDestination: (preset: PresetLocation) => void;
   setDestinationFromCoordinates: (latitude: number, longitude: number) => Promise<void>;
-  getCurrentLocation: () => Promise<void>;
+  getCurrentLocation: () => Promise<Location.LocationObject | null>;
   testTriggerNotification: () => Promise<void>;
   dismissPermissionModal: () => void;
   dismissAlarmAlertModal: () => void;
@@ -207,12 +218,96 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const locationWatchSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const snoozeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasTriggeredArrivalRef = useRef<boolean>(false);
+  const isAlarmActiveRef = useRef<boolean>(false);
+  const lastNotifDistanceMetersRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    isAlarmActiveRef.current = isAlarmActive;
+  }, [isAlarmActive]);
+
+  const handleTurnOffAlarmFromNotification = useCallback(async () => {
+    if (Haptics.notificationAsync) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
+    if (snoozeTimerRef.current) {
+      clearTimeout(snoozeTimerRef.current);
+      snoozeTimerRef.current = null;
+    }
+    await stopBackgroundTracking();
+    await stopAlarmRinging();
+    await dismissActiveNotification();
+    setIsAlarmActive(false);
+    isAlarmActiveRef.current = false;
+    hasTriggeredArrivalRef.current = false;
+    lastNotifDistanceMetersRef.current = null;
+    await clearAlarmSession();
+  }, []);
+
+  const restoreActiveSession = useCallback(async () => {
+    try {
+      const session = await loadAlarmSession();
+      if (session && session.isAlarmActive && session.destination) {
+        console.log('[WakePoint] Restoring active alarm session across process lifecycle:', session.destination.title);
+        setDestinationState(session.destination);
+        setRadiusState(session.radius);
+        setAlarmOptionsState(session.alarmOptions);
+        setIsAlarmActive(true);
+        isAlarmActiveRef.current = true;
+
+        // Resume background foreground service & geofencing
+        await startBackgroundTracking(session.destination, session.radius);
+
+        // Keep persistent notification active in the shade
+        await postOrUpdateActiveNotification(session.destination.title, session.radius, null);
+
+        // Evaluate live position immediately
+        try {
+          const fg = await Location.getForegroundPermissionsAsync();
+          if (fg.granted) {
+            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            setUserLocation(loc);
+            const dist = computeHaversineDistance(
+              loc.coords.latitude,
+              loc.coords.longitude,
+              session.destination.latitude,
+              session.destination.longitude
+            );
+            setCurrentDistanceMeters(dist);
+            await postOrUpdateActiveNotification(session.destination.title, session.radius, dist);
+
+            if (dist <= session.radius) {
+              hasTriggeredArrivalRef.current = true;
+              await triggerSimultaneousAlarm();
+            }
+          }
+        } catch (_) {}
+      }
+    } catch (err) {
+      console.warn('[WakePoint] Error restoring active session:', err);
+    }
+  }, []);
 
   useEffect(() => {
     setupNotificationChannel();
     checkPermissionsSilently();
     fetchUserCurrentLocation();
-  }, []);
+    restoreActiveSession();
+
+    // Listen for notification action taps (e.g. Turn Off Alarm button)
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      if (response.actionIdentifier === ACTION_TURN_OFF_ALARM) {
+        handleTurnOffAlarmFromNotification();
+      }
+    });
+
+    return () => {
+      sub.remove();
+      if (snoozeTimerRef.current) {
+        clearTimeout(snoozeTimerRef.current);
+        snoozeTimerRef.current = null;
+      }
+    };
+  }, [handleTurnOffAlarmFromNotification, restoreActiveSession]);
 
   const lastRouteCalculatedPointRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastRouteDestinationRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -249,10 +344,24 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               );
               setCurrentDistanceMeters(dist);
 
+              // Update persistent ongoing notification with live distance (throttled every 50m)
+              if (isAlarmActive) {
+                const shouldUpdateNotif =
+                  lastNotifDistanceMetersRef.current == null ||
+                  Math.abs(dist - lastNotifDistanceMetersRef.current) >= 50;
+                if (shouldUpdateNotif) {
+                  lastNotifDistanceMetersRef.current = dist;
+                  postOrUpdateActiveNotification(destination.title, radius, dist).catch(() => {});
+                }
+              }
+
               // Check if entered proximity circle and alarm is active
               if (isAlarmActive && dist <= radius && !hasTriggeredArrivalRef.current) {
                 hasTriggeredArrivalRef.current = true;
                 triggerSimultaneousAlarm();
+              } else if (dist > radius * 1.15 && hasTriggeredArrivalRef.current) {
+                // Hysteresis: reset trigger when moving outside perimeter
+                hasTriggeredArrivalRef.current = false;
               }
             }
           }
@@ -331,10 +440,19 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         };
       } else {
         setRouteCoordinates([]);
+        // Fallback transit duration estimation (~30 km/h) if routing polyline is unavailable
+        if (currentDistanceMeters) {
+          const fallbackSeconds = Math.round(((currentDistanceMeters / 1000) / 30) * 3600);
+          setRouteDurationSeconds(Math.max(60, fallbackSeconds));
+        }
       }
     } catch (error) {
       console.error('[WakePoint] Route calculation error:', error);
       setRouteCoordinates([]);
+      if (currentDistanceMeters) {
+        const fallbackSeconds = Math.round(((currentDistanceMeters / 1000) / 30) * 3600);
+        setRouteDurationSeconds(Math.max(60, fallbackSeconds));
+      }
     } finally {
       setIsCalculatingRoute(false);
     }
@@ -426,6 +544,9 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         notificationsGranted: true,
         isChecking: false,
       });
+
+      // Immediately fetch user location once permissions are granted
+      await fetchUserCurrentLocation();
       return true;
     } catch (error) {
       console.error('[WakePoint] Error requesting permissions:', error);
@@ -440,6 +561,15 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         fg = await Location.requestForegroundPermissionsAsync();
       }
       if (fg.granted) {
+        // 1. Instant cached fix for zero-delay blue beacon
+        try {
+          const cachedLoc = await Location.getLastKnownPositionAsync({});
+          if (cachedLoc) {
+            setUserLocation(cachedLoc);
+          }
+        } catch (_) {}
+
+        // 2. High-accuracy live fix
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
@@ -462,11 +592,23 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const setDestination = (dest: Destination | null) => {
     setDestinationState(dest);
     hasTriggeredArrivalRef.current = false;
+    if (snoozeTimerRef.current) {
+      clearTimeout(snoozeTimerRef.current);
+      snoozeTimerRef.current = null;
+    }
     if (Haptics.impactAsync) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     if (isAlarmActive && dest) {
       startBackgroundTracking(dest, radius);
+      postOrUpdateActiveNotification(dest.title, radius, currentDistanceMeters);
+      saveAlarmSession({
+        destination: dest,
+        radius,
+        isAlarmActive: true,
+        alarmOptions,
+        savedAt: Date.now(),
+      });
     }
   };
 
@@ -474,14 +616,34 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setRadiusState(newRadius);
     if (isAlarmActive && destination) {
       startBackgroundTracking(destination, newRadius);
+      postOrUpdateActiveNotification(destination.title, newRadius, currentDistanceMeters);
+      saveAlarmSession({
+        destination,
+        radius: newRadius,
+        isAlarmActive: true,
+        alarmOptions,
+        savedAt: Date.now(),
+      });
     }
   };
 
   const setAlarmOptions = (options: Partial<AlarmOptions>) => {
-    setAlarmOptionsState((prev) => ({ ...prev, ...options }));
+    setAlarmOptionsState((prev) => {
+      const next = { ...prev, ...options };
+      if (isAlarmActive && destination) {
+        saveAlarmSession({
+          destination,
+          radius,
+          isAlarmActive: true,
+          alarmOptions: next,
+          savedAt: Date.now(),
+        });
+      }
+      return next;
+    });
   };
 
-  const startBackgroundTracking = async (dest: Destination, r: number) => {
+  async function startBackgroundTracking(dest: Destination, r: number) {
     try {
       // 1. Sync target with background task memory
       setSharedBackgroundTarget({
@@ -519,9 +681,18 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         await Location.stopGeofencingAsync(WAKEPOINT_PROXIMITY_TASK);
       }
 
+      const geofenceIdentifier = encodeGeofenceIdentifier({
+        latitude: dest.latitude,
+        longitude: dest.longitude,
+        radius: r,
+        title: dest.title,
+        soundTone: alarmOptions.soundTone,
+        vibrationStyle: alarmOptions.vibrationStyle,
+      });
+
       await Location.startGeofencingAsync(WAKEPOINT_PROXIMITY_TASK, [
         {
-          identifier: `WAKEPOINT_PIN_${Date.now()}`,
+          identifier: geofenceIdentifier,
           latitude: dest.latitude,
           longitude: dest.longitude,
           radius: r,
@@ -536,7 +707,7 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  const stopBackgroundTracking = async () => {
+  async function stopBackgroundTracking() {
     try {
       setSharedBackgroundTarget(null);
 
@@ -566,10 +737,18 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     if (isAlarmActive) {
+      if (snoozeTimerRef.current) {
+        clearTimeout(snoozeTimerRef.current);
+        snoozeTimerRef.current = null;
+      }
       await stopBackgroundTracking();
       await stopAlarmRinging();
+      await dismissActiveNotification();
       setIsAlarmActive(false);
+      isAlarmActiveRef.current = false;
       hasTriggeredArrivalRef.current = false;
+      lastNotifDistanceMetersRef.current = null;
+      await clearAlarmSession();
     } else {
       if (!destination) {
         Alert.alert('No Target Selected', 'Please select or search a location on the map before activating the alarm.');
@@ -583,7 +762,17 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       hasTriggeredArrivalRef.current = false;
       await startBackgroundTracking(destination, radius);
+      await postOrUpdateActiveNotification(destination.title, radius, currentDistanceMeters);
       setIsAlarmActive(true);
+      isAlarmActiveRef.current = true;
+
+      await saveAlarmSession({
+        destination,
+        radius,
+        isAlarmActive: true,
+        alarmOptions,
+        savedAt: Date.now(),
+      });
     }
   };
 
@@ -670,10 +859,23 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setSearchResults([]);
   };
 
-  const getCurrentLocation = async () => {
+  const getCurrentLocation = async (): Promise<Location.LocationObject | null> => {
     try {
-      const fg = await Location.requestForegroundPermissionsAsync();
+      let fg = await Location.getForegroundPermissionsAsync();
+      if (!fg.granted) {
+        fg = await Location.requestForegroundPermissionsAsync();
+      }
       if (fg.granted) {
+        // Fast-path: if state has no location yet, grab cached fix instantly
+        if (!userLocation) {
+          try {
+            const cachedLoc = await Location.getLastKnownPositionAsync({});
+            if (cachedLoc) {
+              setUserLocation(cachedLoc);
+            }
+          } catch (_) {}
+        }
+
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.High,
         });
@@ -687,36 +889,47 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           );
           setCurrentDistanceMeters(dist);
         }
+        return loc;
       }
     } catch (e) {
       console.log('[WakePoint] Location fetch error:', e);
     }
+    return userLocation || null;
   };
 
   /**
    * Triggers the full ringing alarm: loud looping audio, repeating vibration, and full-screen modal
    */
-  const triggerSimultaneousAlarm = async () => {
+  async function triggerSimultaneousAlarm() {
     setIsAlarmRinging(true);
     setShowAlarmAlertModal(true);
 
     // 1. Play continuous loud alarm audio + continuous rhythmic vibration
     await alarmSoundService.startAlarm(alarmOptions.soundTone, alarmOptions.vibrationStyle);
 
-    // 2. High priority notification
+    // 2. High priority persistent notification with Turn Off Alarm action
     await Notifications.scheduleNotificationAsync({
+      identifier: 'wakepoint_arrival_alarm_notification',
       content: {
         title: '🚨 WAKE UP! Arrival Alarm!',
         body: `You are inside the perimeter of: ${destination?.title || 'Your Destination'}`,
         sound: 'default',
         priority: Notifications.AndroidNotificationPriority.MAX,
         vibrate: [0, 500, 200, 500, 200, 1000],
+        sticky: true,
+        autoDismiss: false,
+        data: {
+          channelId: WAKEPOINT_NOTIFICATION_CHANNEL,
+        },
+        categoryIdentifier: WAKEPOINT_ACTIVE_CATEGORY,
       },
-      trigger: null,
+      trigger: {
+        channelId: WAKEPOINT_NOTIFICATION_CHANNEL,
+      } as any,
     });
   };
 
-  const stopAlarmRinging = async () => {
+  async function stopAlarmRinging() {
     setIsAlarmRinging(false);
     setShowAlarmAlertModal(false);
     await alarmSoundService.stopAlarm();
@@ -726,9 +939,10 @@ export const WakePointProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     await stopAlarmRinging();
     if (snoozeTimerRef.current) {
       clearTimeout(snoozeTimerRef.current);
+      snoozeTimerRef.current = null;
     }
     snoozeTimerRef.current = setTimeout(() => {
-      if (isAlarmActive) {
+      if (isAlarmActiveRef.current) {
         hasTriggeredArrivalRef.current = false;
         triggerSimultaneousAlarm();
       }

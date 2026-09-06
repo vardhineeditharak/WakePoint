@@ -9,6 +9,7 @@ class AlarmSoundService {
   private isRinging: boolean = false;
   private previewSound: Audio.Sound | null = null;
   private audioModeConfigured: boolean = false;
+  private uriCache: Map<string, string> = new Map();
 
   private async ensureAudioMode() {
     if (this.audioModeConfigured) return;
@@ -29,8 +30,15 @@ class AlarmSoundService {
   /**
    * Generates a loud 16-bit PCM WAV base64 Data URI for a given tone pattern.
    * Completely offline, instantaneous, zero external asset file dependencies.
+   * Caches results so mathematical waveform synthesis runs at most once per tone.
    */
   private generateWavUri(tone: AlarmTone, durationSeconds = 1.6): string {
+    const cacheKey = `${tone}_${durationSeconds.toFixed(1)}`;
+    const cached = this.uriCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const sampleRate = 22050;
     const numSamples = Math.floor(sampleRate * durationSeconds);
     const dataSize = numSamples * 2; // 16-bit mono = 2 bytes per sample
@@ -104,15 +112,18 @@ class AlarmSoundService {
       view.setInt16(44 + i * 2, intSample, true);
     }
 
-    // Convert array buffer to base64
+    // High-speed 8KB chunked conversion to base64
     const bytes = new Uint8Array(buffer);
+    const CHUNK_SIZE = 8192;
     let binary = '';
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+      const chunk = bytes.subarray(i, i + CHUNK_SIZE);
+      binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
     }
     const base64 = btoa(binary);
-    return `data:audio/wav;base64,${base64}`;
+    const uri = `data:audio/wav;base64,${base64}`;
+    this.uriCache.set(cacheKey, uri);
+    return uri;
   }
 
   private writeString(view: DataView, offset: number, string: string) {
@@ -153,12 +164,13 @@ class AlarmSoundService {
   }
 
   /**
-   * Stops both alarm audio playback and vibration completely
+   * Stops both alarm audio playback, previews, and vibration completely
    */
   public async stopAlarm(): Promise<void> {
     this.isRinging = false;
     this.stopVibration();
     await this.stopAlarmSoundOnly();
+    await this.stopPreviewSoundOnly();
     console.log('[AlarmSoundService] Alarm stopped and silenced.');
   }
 
@@ -174,17 +186,25 @@ class AlarmSoundService {
     }
   }
 
+  private async stopPreviewSoundOnly(): Promise<void> {
+    if (this.previewSound) {
+      try {
+        await this.previewSound.stopAsync();
+        await this.previewSound.unloadAsync();
+      } catch (e) {
+        // ignore unload error
+      }
+      this.previewSound = null;
+    }
+  }
+
   /**
    * Plays a brief 2-second preview of a tone for settings configuration
    */
   public async previewTone(tone: AlarmTone): Promise<void> {
     try {
       await this.ensureAudioMode();
-      if (this.previewSound) {
-        await this.previewSound.stopAsync();
-        await this.previewSound.unloadAsync();
-        this.previewSound = null;
-      }
+      await this.stopPreviewSoundOnly();
 
       const uri = this.generateWavUri(tone, 1.4);
       const { sound } = await Audio.Sound.createAsync(
