@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } f
 import { StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { GeoCoordinate } from '../services/apiService';
+import { ENHANCED_DARK_MAP_STYLE } from '../constants/mapDarkTheme';
 
 export interface WakeMapViewProps {
   userLocation?: { latitude: number; longitude: number } | null;
@@ -32,35 +33,74 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
   const webViewRef = useRef<WebView>(null);
   const [isMapReady, setIsMapReady] = useState(false);
 
+  const pendingFlyToRef = useRef<{ latitude: number; longitude: number; zoom: number } | null>(null);
+
   // Imperative handle for smooth camera fly
   useImperativeHandle(ref, () => ({
     flyTo: (latitude: number, longitude: number, zoom = 15) => {
-      if (webViewRef.current && isMapReady) {
+      if (webViewRef.current) {
         webViewRef.current.injectJavaScript(`
           if (window.wakeMap) {
-            window.wakeMap.flyTo([${latitude}, ${longitude}], ${zoom}, {
-              animate: true,
-              duration: 1.2,
-              easeLinearity: 0.25
-            });
+            try {
+              window.wakeMap.flyTo({
+                center: [${longitude}, ${latitude}],
+                zoom: ${zoom},
+                duration: 1000,
+                essential: true
+              });
+            } catch(e) {
+              window.wakeMap.setCenter([${longitude}, ${latitude}]);
+              window.wakeMap.setZoom(${zoom});
+            }
+          } else {
+            window.pendingFlyTo = [${longitude}, ${latitude}, ${zoom}];
           }
           true;
         `);
       }
+      pendingFlyToRef.current = { latitude, longitude, zoom };
     },
     fitBounds: (coords: GeoCoordinate[]) => {
-      if (webViewRef.current && isMapReady && coords.length > 0) {
-        const boundsJson = JSON.stringify(coords.map(c => [c.latitude, c.longitude]));
+      if (webViewRef.current && coords.length > 0) {
+        const boundsJson = JSON.stringify(coords.map(c => [c.longitude, c.latitude]));
         webViewRef.current.injectJavaScript(`
-          if (window.wakeMap && window.L) {
-            const bounds = ${boundsJson};
-            window.wakeMap.fitBounds(bounds, { padding: [60, 60], maxZoom: 16, animate: true, duration: 1.2 });
+          if (window.wakeMap && window.maplibregl) {
+            try {
+              const rawCoords = ${boundsJson};
+              const bounds = new window.maplibregl.LngLatBounds();
+              rawCoords.forEach(c => bounds.extend(c));
+              window.wakeMap.fitBounds(bounds, { padding: 60, maxZoom: 16, duration: 1000 });
+            } catch(e) {}
           }
           true;
         `);
       }
     },
-  }), [isMapReady]);
+  }), []);
+
+  // Execute buffered camera flyTo once MapLibre engine reports ready
+  useEffect(() => {
+    if (isMapReady && pendingFlyToRef.current && webViewRef.current) {
+      const { latitude, longitude, zoom } = pendingFlyToRef.current;
+      pendingFlyToRef.current = null;
+      webViewRef.current.injectJavaScript(`
+        if (window.wakeMap) {
+          try {
+            window.wakeMap.flyTo({
+              center: [${longitude}, ${latitude}],
+              zoom: ${zoom},
+              duration: 1000,
+              essential: true
+            });
+          } catch(e) {
+            window.wakeMap.setCenter([${longitude}, ${latitude}]);
+            window.wakeMap.setZoom(${zoom});
+          }
+        }
+        true;
+      `);
+    }
+  }, [isMapReady]);
 
   // Sync state changes to WebView
   useEffect(() => {
@@ -71,7 +111,7 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
       destination: destination ? { lat: destination.latitude, lng: destination.longitude, title: destination.title } : null,
       radius,
       isAlarmActive,
-      route: routeCoordinates.map(c => [c.latitude, c.longitude]),
+      route: routeCoordinates.map(c => [c.longitude, c.latitude]), // [lng, lat] for MapLibre
       theme: mapTheme,
     });
 
@@ -107,16 +147,16 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body, #map { width: 100%; height: 100%; background: #0B0F19; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; overflow: hidden; }
     
-    .leaflet-control-attribution { display: none !important; }
-    .leaflet-control-zoom { display: none !important; }
+    .maplibregl-ctrl-attrib { display: none !important; }
+    .maplibregl-ctrl-logo { display: none !important; }
 
-    /* Pulsing User Location Marker */
+    /* Pulsing Electric Blue User Location Marker (Clean & Modern) */
     .user-marker-wrap {
       width: 28px;
       height: 28px;
@@ -124,95 +164,196 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
       display: flex;
       align-items: center;
       justify-content: center;
+      pointer-events: none;
+      z-index: 999 !important;
     }
     .user-marker-pulse {
       position: absolute;
       width: 28px;
       height: 28px;
       border-radius: 50%;
-      background: rgba(99, 102, 241, 0.4);
-      animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+      background: rgba(0, 122, 255, 0.35);
+      animation: user-blue-pulse 2s cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
     }
     .user-marker-core {
       position: relative;
       width: 14px;
       height: 14px;
       border-radius: 50%;
-      background: #6366F1;
+      background: #007AFF;
       border: 2.5px solid #FFFFFF;
-      box-shadow: 0 0 10px rgba(99, 102, 241, 0.9);
+      box-shadow: 0 0 10px rgba(0, 122, 255, 0.9), 0 2px 5px rgba(0, 0, 0, 0.35);
+      z-index: 2;
     }
-    @keyframes pulse-ring {
-      0% { transform: scale(0.6); opacity: 0.9; }
+    @keyframes user-blue-pulse {
+      0% { transform: scale(0.5); opacity: 0.95; }
       100% { transform: scale(2.4); opacity: 0; }
     }
 
-    /* Destination Pointer Pin - Precisely Centered */
-    .pin-wrap {
-      width: 32px;
-      height: 44px;
+    /* Destination Pointer Pin - Small & Minimalist */
+    .pin-container {
+      width: 24px;
+      height: 30px;
       position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       cursor: grab;
+      user-select: none;
+      filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.45));
+      transition: transform 0.15s ease;
+    }
+    .pin-container:active,
+    .pin-container.is-dragging {
+      cursor: grabbing;
+      transform: scale(1.15) translateY(-3px);
     }
     .pin-svg {
-      width: 32px;
-      height: 44px;
-      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6));
+      width: 24px;
+      height: 30px;
+      display: block;
     }
-    .leaflet-container { background: #0B0F19 !important; }
   </style>
 </head>
 <body>
   <div id="map"></div>
 
   <script>
-    const map = L.map('map', {
-      center: [${initialLat}, ${initialLng}],
+    const SATELLITE_STYLE = {
+      version: 8,
+      sources: {
+        'esri-imagery': {
+          type: 'raster',
+          tiles: [
+            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+          ],
+          tileSize: 256,
+          maxzoom: 19
+        }
+      },
+      layers: [
+        {
+          id: 'esri-imagery-layer',
+          type: 'raster',
+          source: 'esri-imagery',
+          minzoom: 0,
+          maxzoom: 19
+        }
+      ]
+    };
+
+    const DARK_STYLE = ${JSON.stringify(ENHANCED_DARK_MAP_STYLE)};
+
+    function getStyleUrl(theme) {
+      if (theme === 'satellite') return SATELLITE_STYLE;
+      if (theme === 'streets') return 'https://tiles.openfreemap.org/styles/liberty';
+      return DARK_STYLE;
+    }
+
+    let currentTheme = '${mapTheme || 'dark'}';
+
+    const map = new maplibregl.Map({
+      container: 'map',
+      style: getStyleUrl(currentTheme),
+      center: [${initialLng}, ${initialLat}],
       zoom: 14,
-      zoomControl: false,
-      attributionControl: false,
-      fadeAnimation: true,
-      zoomAnimation: true,
+      attributionControl: false
     });
 
     window.wakeMap = map;
 
-    let currentTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      subdomains: 'abcd',
-      maxZoom: 19,
-    }).addTo(map);
-
     let userMarker = null;
     let destMarker = null;
-    let radiusCircle = null;
-    let routePolyline = null;
     let isDraggingPin = false;
 
-    // User location icon: 28x28, anchor exactly in center [14, 14]
-    const userIcon = L.divIcon({
-      className: '',
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
-      html: '<div class="user-marker-wrap"><div class="user-marker-pulse"></div><div class="user-marker-core"></div></div>'
-    });
+    let cachedData = null;
 
-    // Destination Pin SVG: 32x44, anchor at the needle tip [16, 44]
-    function getDestPinSvg(isActive) {
+    // Helper: Compute exact geographic circle polygon in GeoJSON
+    function createGeoJsonCircle(centerLngLat, radiusInMeters, points = 64) {
+      const lng = centerLngLat[0];
+      const lat = centerLngLat[1];
+      const km = radiusInMeters / 1000;
+      const ret = [];
+      const distanceX = km / (111.320 * Math.cos((lat * Math.PI) / 180));
+      const distanceY = km / 110.574;
+
+      for (let i = 0; i < points; i++) {
+        const theta = (i / points) * (2 * Math.PI);
+        const x = distanceX * Math.cos(theta);
+        const y = distanceY * Math.sin(theta);
+        ret.push([lng + x, lat + y]);
+      }
+      ret.push(ret[0]); // Close polygon
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [ret]
+        },
+        properties: {}
+      };
+    }
+
+    // Destination Pin HTML builder - Small, clean & modern
+    function getDestPinHtml(isActive) {
       const pinColor = isActive ? '#10B981' : '#6366F1';
-      const iconPath = isActive
-        ? '<path d="M16 11l-3-3 1.4-1.4 1.6 1.6 4.6-4.6L22 6z" fill="white"/>'
-        : '<circle cx="16" cy="15" r="4.5" fill="white"/>';
+      const iconSvg = isActive
+        ? '<path d="M8.5 10.5L10.8 12.8L15.5 8" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+        : '<circle cx="12" cy="10.5" r="3.2" fill="#FFFFFF"/>';
 
-      return '<div class="pin-wrap">' +
-        '<svg class="pin-svg" viewBox="0 0 32 44" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-          '<path d="M16 44C16 44 30 27.5 30 16C30 7.16344 23.732 0 16 0C8.26801 0 2 7.16344 2 16C2 27.5 16 44 16 44Z" fill="' + pinColor + '"/>' +
-          '<path d="M16 42C16 42 28.5 26.5 28.5 16C28.5 8 22.9 1.5 16 1.5C9.1 1.5 3.5 8 3.5 16C3.5 26.5 16 42 16 42Z" stroke="white" stroke-width="1.8" stroke-opacity="0.85"/>' +
-          iconPath +
+      return '<div class="pin-container">' +
+        '<svg class="pin-svg" viewBox="0 0 24 30" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+          '<path d="M12 30 C10.5 24 2 17 2 10.5 A 10 10 0 1 1 22 10.5 C 22 17 13.5 24 12 30 Z" fill="' + pinColor + '" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/>' +
+          iconSvg +
         '</svg>' +
       '</div>';
+    }
+
+    // Ensure GeoJSON layers exist on the active style
+    function ensureLayers() {
+      if (!map.getSource('radius-circle-source')) {
+        map.addSource('radius-circle-source', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] }
+        });
+        map.addLayer({
+          id: 'radius-circle-fill',
+          type: 'fill',
+          source: 'radius-circle-source',
+          paint: {
+            'fill-color': '#6366F1',
+            'fill-opacity': 0.18
+          }
+        });
+        map.addLayer({
+          id: 'radius-circle-stroke',
+          type: 'line',
+          source: 'radius-circle-source',
+          paint: {
+            'line-color': '#6366F1',
+            'line-width': 2.2,
+            'line-opacity': 0.95
+          }
+        });
+      }
+
+      if (!map.getSource('route-source')) {
+        map.addSource('route-source', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] }
+        });
+        map.addLayer({
+          id: 'route-line',
+          type: 'line',
+          source: 'route-source',
+          layout: {
+            'line-cap': 'round',
+            'line-join': 'round'
+          },
+          paint: {
+            'line-color': '#6366F1',
+            'line-width': 4.5,
+            'line-opacity': 0.95
+          }
+        });
+      }
     }
 
     // Map Tap Listener
@@ -220,70 +361,102 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
       if (isDraggingPin) return;
       window.ReactNativeWebView.postMessage(JSON.stringify({
         type: 'MAP_CLICK',
-        lat: e.latlng.lat,
-        lng: e.latlng.lng,
+        lat: e.lngLat.lat,
+        lng: e.lngLat.lng,
       }));
     });
 
-    // Update map data from React Native
-    window.updateWakePointMap = function(data) {
-      // 1. Theme
-      if (data.theme) {
-        let newUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-        if (data.theme === 'satellite') {
-          newUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-        } else if (data.theme === 'streets') {
-          newUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-        }
-        if (currentTileLayer._url !== newUrl) {
-          map.removeLayer(currentTileLayer);
-          currentTileLayer = L.tileLayer(newUrl, { subdomains: 'abcd', maxZoom: 19 }).addTo(map);
-          currentTileLayer.bringToBack();
-        }
+    map.on('load', function() {
+      ensureLayers();
+      if (cachedData) {
+        renderMapData(cachedData);
       }
+      if (window.pendingFlyTo) {
+        try {
+          map.flyTo({ center: [window.pendingFlyTo[0], window.pendingFlyTo[1]], zoom: window.pendingFlyTo[2], duration: 1000 });
+        } catch(e) {
+          map.setCenter([window.pendingFlyTo[0], window.pendingFlyTo[1]]);
+          map.setZoom(window.pendingFlyTo[2]);
+        }
+        window.pendingFlyTo = null;
+      }
+      setTimeout(() => {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
+      }, 100);
+    });
 
-      // 2. User Location
+    map.on('style.load', function() {
+      ensureLayers();
+      if (cachedData) {
+        renderMapData(cachedData);
+      }
+    });
+
+    function renderMapData(data) {
+      cachedData = data;
+      if (!map.loaded() || !map.getSource('radius-circle-source')) return;
+
+      // 1. User Location (Always visible Electric Blue Beacon)
       if (data.userLocation) {
+        const userCoords = [data.userLocation.lng, data.userLocation.lat];
         if (!userMarker) {
-          userMarker = L.marker([data.userLocation.lat, data.userLocation.lng], {
-            icon: userIcon,
-            zIndexOffset: 500,
-          }).addTo(map);
+          const userEl = document.createElement('div');
+          userEl.className = 'user-marker-wrap';
+          userEl.innerHTML = '<div class="user-marker-pulse"></div><div class="user-marker-core"></div>';
+          userMarker = new maplibregl.Marker({ element: userEl, anchor: 'center' })
+            .setLngLat(userCoords)
+            .addTo(map);
+
           if (!data.destination) {
-            map.setView([data.userLocation.lat, data.userLocation.lng], 15);
+            map.flyTo({ center: userCoords, zoom: 15, duration: 800 });
           }
         } else {
-          userMarker.setLatLng([data.userLocation.lat, data.userLocation.lng]);
+          userMarker.setLngLat(userCoords);
+          if (!userMarker.getElement().parentNode) {
+            userMarker.addTo(map);
+          }
         }
       } else if (userMarker) {
-        map.removeLayer(userMarker);
+        userMarker.remove();
         userMarker = null;
       }
 
-      // 3. Destination Pin & Radius Circle
+      // 2. Destination Pin & Arrival Radius Circle
       if (data.destination) {
-        const destIcon = L.divIcon({
-          className: '',
-          iconSize: [32, 44],
-          iconAnchor: [16, 44], // Bottom needle tip is exactly at [16, 44]
-          html: getDestPinSvg(data.isAlarmActive),
-        });
+        const destCoords = [data.destination.lng, data.destination.lat];
+        const radiusMeters = data.radius || 1000;
+        const isActive = !!data.isAlarmActive;
+        const color = isActive ? '#10B981' : '#6366F1';
 
+        // Update / create destination marker
         if (!destMarker) {
-          destMarker = L.marker([data.destination.lat, data.destination.lng], {
-            icon: destIcon,
-            draggable: true,
-            zIndexOffset: 1000,
-          }).addTo(map);
+          const destEl = document.createElement('div');
+          destEl.innerHTML = getDestPinHtml(isActive);
 
-          destMarker.on('dragstart', function() { isDraggingPin = true; });
-          destMarker.on('drag', function(e) {
-            const curPos = e.target.getLatLng();
-            if (radiusCircle) radiusCircle.setLatLng(curPos);
+          destMarker = new maplibregl.Marker({
+            element: destEl,
+            anchor: 'bottom',
+            draggable: true
+          })
+            .setLngLat(destCoords)
+            .addTo(map);
+
+          destMarker.on('dragstart', function() {
+            isDraggingPin = true;
+            const container = destMarker.getElement().querySelector('.pin-container');
+            if (container) container.classList.add('is-dragging');
           });
-          destMarker.on('dragend', function(e) {
+          destMarker.on('drag', function() {
+            const curPos = destMarker.getLngLat();
+            const liveCircle = createGeoJsonCircle([curPos.lng, curPos.lat], radiusMeters);
+            const source = map.getSource('radius-circle-source');
+            if (source) source.setData(liveCircle);
+          });
+          destMarker.on('dragend', function() {
             isDraggingPin = false;
-            const newPos = e.target.getLatLng();
+            const container = destMarker.getElement().querySelector('.pin-container');
+            if (container) container.classList.remove('is-dragging');
+            const newPos = destMarker.getLngLat();
             window.ReactNativeWebView.postMessage(JSON.stringify({
               type: 'MARKER_DRAG_END',
               lat: newPos.lat,
@@ -292,64 +465,69 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
           });
         } else {
           if (!isDraggingPin) {
-            destMarker.setLatLng([data.destination.lat, data.destination.lng]);
+            destMarker.setLngLat(destCoords);
           }
-          destMarker.setIcon(destIcon);
+          destMarker.getElement().innerHTML = getDestPinHtml(isActive);
+          if (!destMarker.getElement().parentNode) {
+            destMarker.addTo(map);
+          }
         }
 
-        // Proximity Circle centered precisely at [lat, lng]
-        const circleStyle = {
-          color: data.isAlarmActive ? '#10B981' : '#6366F1',
-          fillColor: data.isAlarmActive ? '#10B981' : '#6366F1',
-          fillOpacity: data.isAlarmActive ? 0.22 : 0.16,
-          weight: 2,
-          dashArray: data.isAlarmActive ? null : '6, 6',
-        };
+        // Update GeoJSON radius circle
+        const circleData = createGeoJsonCircle(destCoords, radiusMeters);
+        const radiusSource = map.getSource('radius-circle-source');
+        if (radiusSource) {
+          radiusSource.setData(circleData);
+        }
 
-        if (!radiusCircle) {
-          radiusCircle = L.circle([data.destination.lat, data.destination.lng], {
-            radius: data.radius || 1000,
-            ...circleStyle,
-          }).addTo(map);
-        } else {
-          if (!isDraggingPin) {
-            radiusCircle.setLatLng([data.destination.lat, data.destination.lng]);
-          }
-          radiusCircle.setRadius(data.radius || 1000);
-          radiusCircle.setStyle(circleStyle);
+        if (map.getLayer('radius-circle-fill')) {
+          map.setPaintProperty('radius-circle-fill', 'fill-color', color);
+          map.setPaintProperty('radius-circle-fill', 'fill-opacity', isActive ? 0.22 : 0.16);
+        }
+        if (map.getLayer('radius-circle-stroke')) {
+          map.setPaintProperty('radius-circle-stroke', 'line-color', color);
         }
       } else {
-        if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
-        if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
-      }
-
-      // 4. Route Polyline
-      if (data.route && data.route.length > 1) {
-        if (!routePolyline) {
-          routePolyline = L.polyline(data.route, {
-            color: '#6366F1',
-            weight: 4.5,
-            opacity: 0.9,
-            lineCap: 'round',
-            lineJoin: 'round',
-          }).addTo(map);
-          routePolyline.bringToBack();
-        } else {
-          routePolyline.setLatLngs(data.route);
+        if (destMarker) {
+          destMarker.remove();
+          destMarker = null;
         }
-      } else if (routePolyline) {
-        map.removeLayer(routePolyline);
-        routePolyline = null;
+        const radiusSource = map.getSource('radius-circle-source');
+        if (radiusSource) {
+          radiusSource.setData({ type: 'FeatureCollection', features: [] });
+        }
       }
-    };
 
-    setTimeout(() => {
-      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
-    }, 200);
+      // 3. Routing Polyline
+      const routeSource = map.getSource('route-source');
+      if (routeSource) {
+        if (data.route && data.route.length > 1) {
+          routeSource.setData({
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: data.route
+            },
+            properties: {}
+          });
+        } else {
+          routeSource.setData({ type: 'FeatureCollection', features: [] });
+        }
+      }
+    }
+
+    // React Native updates trigger this function
+    window.updateWakePointMap = function(data) {
+      if (data.theme && data.theme !== currentTheme) {
+        currentTheme = data.theme;
+        map.setStyle(getStyleUrl(currentTheme));
+      }
+      renderMapData(data);
+    };
   </script>
 </body>
 </html>
-  `, [initialLat, initialLng]);
+  `, [initialLat, initialLng, mapTheme]);
 
   return (
     <View style={styles.container}>
@@ -376,10 +554,10 @@ WakeMapView.displayName = 'WakeMapView';
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0B0F19',
+    backgroundColor: '#111622',
   },
   webview: {
     flex: 1,
-    backgroundColor: '#0B0F19',
+    backgroundColor: '#111622',
   },
 });

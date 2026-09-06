@@ -30,14 +30,23 @@ export default function MainMapScreen() {
   } = useWakePoint();
 
   const hasCenteredInitialLocation = useRef(false);
+  const prevDestinationRef = useRef<typeof destination>(null);
 
-  // Auto-center on user's live position when location is first acquired
+  // Auto-center on user's live position when location is first acquired or when destination is cleared
   useEffect(() => {
     if (userLocation && !destination && !hasCenteredInitialLocation.current && mapRef.current) {
       hasCenteredInitialLocation.current = true;
       mapRef.current.flyTo(userLocation.coords.latitude, userLocation.coords.longitude, 15);
     }
   }, [userLocation, destination]);
+
+  useEffect(() => {
+    // When destination is cleared / discarded, refocus back towards user current location
+    if (prevDestinationRef.current && !destination && userLocation && mapRef.current) {
+      mapRef.current.flyTo(userLocation.coords.latitude, userLocation.coords.longitude, 15);
+    }
+    prevDestinationRef.current = destination;
+  }, [destination, userLocation]);
 
   // Smoothly fly camera when destination changes
   useEffect(() => {
@@ -54,9 +63,26 @@ export default function MainMapScreen() {
   }, [routeCoordinates]);
 
   const handleCenterUserLocation = async () => {
-    await getCurrentLocation();
+    // 1. Instant 0ms response: Fly immediately if we already have coordinates
     if (userLocation && mapRef.current) {
-      mapRef.current.flyTo(userLocation.coords.latitude, userLocation.coords.longitude, 15);
+      mapRef.current.flyTo(userLocation.coords.latitude, userLocation.coords.longitude, 16);
+    }
+
+    // 2. Refresh GPS coordinates in parallel
+    try {
+      const loc = await getCurrentLocation();
+      const target = loc || userLocation;
+      if (target && mapRef.current) {
+        mapRef.current.flyTo(target.coords.latitude, target.coords.longitude, 16);
+      }
+    } catch (e) {
+      console.warn('[WakePoint] Error centering user position:', e);
+    }
+  };
+
+  const handleCenterDestination = () => {
+    if (destination && mapRef.current) {
+      mapRef.current.flyTo(destination.latitude, destination.longitude, 15);
     }
   };
 
@@ -102,7 +128,10 @@ export default function MainMapScreen() {
       />
 
       {/* Top Search Bar */}
-      <SearchBar onCenterUserLocation={handleCenterUserLocation} />
+      <SearchBar
+        onCenterUserLocation={handleCenterUserLocation}
+        onCenterDestination={handleCenterDestination}
+      />
 
       {/* Clean Floating Right-Side Tool Dock (hidden while searching) */}
       {!isSearchFocused && (
@@ -126,9 +155,23 @@ export default function MainMapScreen() {
             style={styles.dockBtn}
             onPress={handleCenterUserLocation}
             activeOpacity={0.8}
+            accessibilityLabel="Center on current location"
           >
-            <Ionicons name="locate-sharp" size={20} color="#6366F1" />
+            <Ionicons name="navigate" size={18} color="#007AFF" />
+            <Text style={[styles.dockBtnText, { color: '#007AFF' }]}>GPS</Text>
           </TouchableOpacity>
+
+          {destination && (
+            <TouchableOpacity
+              style={styles.dockBtn}
+              onPress={handleCenterDestination}
+              activeOpacity={0.8}
+              accessibilityLabel="Center on destination"
+            >
+              <Ionicons name="flag" size={17} color="#10B981" />
+              <Text style={[styles.dockBtnText, { color: '#10B981' }]}>Target</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 

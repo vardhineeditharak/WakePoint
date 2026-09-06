@@ -92,8 +92,10 @@ export const AlarmAlertModal: React.FC = () => {
           </Text>
 
           <Text style={styles.message}>
-            You have crossed into your destination radius
-            {currentDistanceMeters !== null ? ` (~${currentDistanceMeters}m away)` : ''}!
+            You have crossed into your destination arrival perimeter
+            {currentDistanceMeters !== null
+              ? ` (~${currentDistanceMeters >= 1000 ? `${(currentDistanceMeters / 1000).toFixed(1)} km` : `${Math.round(currentDistanceMeters)} m`} away)`
+              : ''}!
             Wake up and prepare for arrival.
           </Text>
 

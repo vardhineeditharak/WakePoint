@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useWakePoint } from '../context/WakePointContext';
 import { AlarmOptionsModal } from './AlarmOptionsModal';
@@ -85,10 +86,11 @@ export const RadiusSliderWidget: React.FC = () => {
   };
 
   const formatDistance = (meters: number): string => {
-    if (meters >= 1000) {
-      return `${(meters / 1000).toFixed(1)} km`;
+    const rounded = Math.round(meters);
+    if (rounded >= 1000) {
+      return `${(rounded / 1000).toFixed(1)} km`;
     }
-    return `${meters} m`;
+    return `${rounded} m`;
   };
 
   const formatDuration = (seconds: number): string => {
@@ -273,7 +275,12 @@ export const RadiusSliderWidget: React.FC = () => {
                     <TouchableOpacity
                       key={preset.label}
                       style={[styles.presetChip, isSelected && styles.presetChipSelected]}
-                      onPress={() => setRadius(preset.value)}
+                      onPress={() => {
+                        setRadius(preset.value);
+                        if (Haptics.selectionAsync) {
+                          Haptics.selectionAsync();
+                        }
+                      }}
                       activeOpacity={0.7}
                     >
                       <Text
