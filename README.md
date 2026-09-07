@@ -4,51 +4,125 @@
   <img src="./assets/images/brand-banner.png" alt="WakePoint Hero Banner" width="100%" />
 </p>
 
-> **GPS Proximity Arrival Alarm & Dark Map Navigation App**  
-> Never miss your bus, train, or metro stop again. WakePoint wakes you up with continuous loud alarms and rhythmic vibrations the moment you enter your target destination perimeter.
+<p align="center">
+  <strong>Next-Generation GPS Proximity Arrival Alarm & Vector Dark Map Navigation</strong><br />
+  <em>Never miss your transit stop again. WakePoint rings continuous loud alarms and rhythmic haptics the moment you enter your destination perimeter.</em>
+</p>
 
-[![Expo SDK 54](https://img.shields.io/badge/Expo-SDK%2054-000020?style=for-the-badge&logo=expo&logoColor=white)](https://expo.dev)
-[![React Native 0.81](https://img.shields.io/badge/React%20Native-0.81.5-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactnative.dev)
-[![TypeScript 5.9](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
-
----
-
-## 💡 Why WakePoint?
-
-Public transit commuters, late-night travelers, and daily passengers often take naps on trains, buses, and cabs, constantly worried about missing their stop. Traditional alarms are bound to fixed times (which fail when transit is delayed). 
-
-**WakePoint is bound to location.** Set a destination, dial in your wake-up radius (from 100m to 5km), and rest easy. When your GPS enters the geofence perimeter, WakePoint rings loudly and vibrates until you dismiss or snooze it.
+<p align="center">
+  <a href="https://expo.dev"><img src="https://img.shields.io/badge/Expo-SDK%2054-000020?style=for-the-badge&logo=expo&logoColor=white" alt="Expo SDK 54" /></a>
+  <a href="https://reactnative.dev"><img src="https://img.shields.io/badge/React%20Native-0.81.5-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React Native 0.81.5" /></a>
+  <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19.1.0-087EA4?style=for-the-badge&logo=react&logoColor=white" alt="React 19" /></a>
+  <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript 5.9" /></a>
+  <a href="https://maplibre.org"><img src="https://img.shields.io/badge/MapLibre%20GL-v4.7.1-3969EC?style=for-the-badge&logo=maplibre&logoColor=white" alt="MapLibre GL" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-10B981.svg?style=for-the-badge" alt="MIT License" /></a>
+</p>
 
 ---
 
-## ✨ Key Features
+## 💡 The Problem & Solution
 
-- 🗺️ **Zero API-Key Dark Map Engine**: Powered by an embedded Leaflet.js runtime using OpenStreetMap, Satellite, and Streets tiles with hardware-accelerated dark styling. Renders reliably on Android & iOS without Google Maps billing, CartoDB API keys, or blank grey tile bugs.
-- 🔊 **Continuous Offline Audio Synthesis**: Plays loud, looping alarms using dynamically synthesized 16-bit PCM WAV base64 audio. Zero external audio file dependencies, fully offline.
-  - *Tones available:* **Urgent Radar**, **Emergency Siren**, **Classic Bell**, and **Upbeat Chime**.
-- 📳 **Rhythmic Vibration System**: Multi-frequency continuous haptic pulse patterns (*Pulse*, *Heavy*, *Gentle*) that cut through deep sleep.
-- 🔍 **Free Keystroke Autocomplete**: Integrated with the **Komoot Photon Geocoding API** with 300ms debouncing and live GPS coordinate biasing.
-- 🚗 **Real-Time OSRM Route Navigation**: Computes live driving route polylines and estimated trip duration connecting your position to the destination.
-- 🎚️ **Interactive Perimeter Radius Slider**: Adjust proximity boundary from **100 meters to 5.0 kilometers** in real time with instant visual circle scaling.
-- 📍 **Draggable Marker Pin**: Long-press and drag the destination marker anywhere on the map with automatic reverse-geocoding.
-- 🔋 **Battery-Conscious Design**: Uses balanced-accuracy GPS polling and throttled route recalculation (>100m movement threshold) to prevent CPU heating and battery drain.
-- 🇮🇳 **Pre-Configured Metro Hubs**: Quick-select presets for major transit hubs (Bengaluru, Mumbai, Delhi-NCR, Hyderabad, Chennai, Kolkata, Pune).
-- 📦 **Free GitHub Actions APK Build**: Pre-configured CI/CD workflow that builds and signs a standalone Android `.apk` directly on GitHub without requiring local Android Studio.
+Daily commuters, late-night travelers, and passengers on buses, suburban trains, metros, and cabs often want to nap or read without the anxiety of missing their transfer or stop.
+
+- ❌ **Why standard alarms fail**: Clock alarms are strictly time-bound. If your bus gets stuck in traffic or your train stops on an outer track, a timer goes off too early or too late.
+- ✅ **The WakePoint difference**: WakePoint is strictly **location-bound (geofenced)**. You specify where you want to wake up and your desired arrival radius (from 100 meters to 5.0 kilometers). WakePoint tracks your real-time GPS coordinates in the background and rings loud, looping alarms and rhythmic vibration pulses the instant you cross into your target perimeter—regardless of route delays.
+
+---
+
+## ✨ Key Features (v1.2.0)
+
+### 🗺️ High-Contrast Dark Vector Map Engine
+- **Powered by MapLibre GL v4.7.1 & OpenFreeMap**: Zero Google Maps billing, zero API keys, and zero rate limits.
+- **Custom In-Memory Dark Theme**: Calibrated specifically for high outdoor and nighttime contrast with razor-sharp road hierarchies, sapphire water bodies, and crisp typography.
+- **Multi-Theme Switcher**: Instant one-tap switching between **Dark Vector**, **Esri World Satellite Imagery**, and **OpenFreeMap Liberty Streets**.
+- **Interactive Controls**: Fluid pinch-to-zoom, smooth camera `flyTo` transitions, route bounding, and one-tap re-centering on your live position.
+
+### 🔊 Offline Base64 PCM Audio Synthesis
+- **Zero Asset Dependencies**: Synthesizes pure 16-bit PCM WAV audio waveforms dynamically in memory. No missing MP3 asset bugs, zero network streaming delay, 100% offline.
+- **4 Distinct Alarm Tones**:
+  - 🚨 **Urgent Radar**: Rapid, alternating dual-pitch beeps designed to pierce deep sleep.
+  - 📢 **Emergency Siren**: Sweeping frequency modulation for high-urgency wake-ups.
+  - 🔔 **Classic Bell**: Harmonic, decaying chimes with realistic acoustic attack.
+  - 🎵 **Upbeat Chime**: Bright, pleasant melodic arpeggio.
+
+### 📳 Rhythmic Multi-Pattern Haptic Engine
+- **Custom Tactile Pulses**: Three selectable haptic algorithms (**Pulse**, **Heavy**, **Gentle**) using `expo-haptics`.
+- **Sleep-Breaking Tactile Feedback**: Cycles through synchronized continuous vibrations alongside the audio engine.
+
+### 🔔 Persistent Notification Shade with Quick Actions
+- **Ongoing Foreground Status**: Stays pinned in your notification tray while tracking, showing **live distance remaining** and your arrival perimeter.
+- **One-Tap 'Turn Off Alarm' Action**: Dismiss active alarms or tracking directly from the Android lockscreen or notification tray without reopening the app.
+
+### 🛡️ Session Persistence & Crash Resilience
+- **Persistent Storage Engine**: Powered by `@react-native-async-storage/async-storage`.
+- **Survives Process Eviction**: If Android or iOS evicts the app from RAM or the user restarts their phone, the active destination, radius, and alarm configuration are restored on launch.
+
+### 🔍 Smart Geocoding & Route Navigation
+- **Komoot Photon Autocomplete**: Free, lightning-fast search with 300ms debouncing and live GPS coordinate biasing.
+- **Live Reverse Geocoding**: Long-press or drag the pin anywhere on the globe to inspect the street address.
+- **Turn-by-Turn OSRM Route Navigation**: Fetches live driving polylines, displaying accurate driving distance (km) and estimated travel duration (ETA).
+- **🇮🇳 Indian Metro Hub Presets**: Quick-select presets for major transit hubs across Bengaluru, Mumbai, Delhi-NCR, Hyderabad, Chennai, Kolkata, and Pune.
+
+### 🎚️ Dynamic Geofence Radius Slider
+- **Granular Adjustments**: Slide smoothly from **100 meters to 5.0 kilometers** (50m increments) with instant visual map circle scaling.
+- **Quick Preset Chips**: Jump directly to `250m`, `500m`, `1 km`, `2 km`, or `5 km` with a single tap.
+
+### 🤖 Automated GitHub Actions CI/CD Pipeline
+- **Zero-Setup APK Builds**: Pre-configured workflow ([`.github/workflows/build-apk.yml`](.github/workflows/build-apk.yml)) that detects version bumps in `package.json` / `app.json` or Git tag pushes.
+- **Auto-Publishing**: Automatically builds, signs, and attaches the installable standalone release `.apk` to GitHub Releases and artifacts.
+
+---
+
+## 🏗️ Architecture & Data Flow
+
+```mermaid
+flowchart TD
+    User([👤 User / Commuter]) -->|Sets Destination & Radius| UI[📱 Main React Native UI]
+    UI -->|Stores Settings| Storage[💾 AsyncStorage Session Cache]
+    UI -->|Queries Autocomplete| Photon[🔍 Komoot Photon API]
+    UI -->|Calculates Polyline & ETA| OSRM[🚗 Project OSRM Routing]
+    UI -->|Injects State via JS Bridge| Map[🗺️ MapLibre GL WebView]
+    
+    UI -->|Activates Alarm| Context[⚙️ WakePoint Global Context]
+    Context -->|Registers Task| TaskMgr[⚡ Expo TaskManager]
+    
+    subgraph Background Execution [Background Services & Native Layer]
+        TaskMgr -->|Continuous Polling| LocationService[🛰️ Expo Foreground Location Service]
+        TaskMgr -->|Boundary Monitoring| Geofencing[⭕ Native Android / iOS Geofencing]
+        LocationService -->|Live Distance Calc| Haversine[📐 Haversine Distance Engine]
+        Haversine -->|Updates Shade Notification| NotifShade[🔔 Sticky Active Notification]
+        NotifShade -->|Quick Action| TurnOff[🛑 Turn Off Action]
+    end
+
+    Haversine -->|Distance <= Target Radius| Trigger{🚨 In Perimeter?}
+    Geofencing -->|Geofence Enter Event| Trigger
+    
+    Trigger -->|YES| AlarmSystem[🚨 Alarm Execution Engine]
+    subgraph Alarm Alert [Alarm Dispatch]
+        AlarmSystem -->|Base64 16-bit PCM Loop| Audio[🔊 Expo-AV Audio Synthesizer]
+        AlarmSystem -->|Continuous Pulse| Haptics[📳 Expo Haptics Engine]
+        AlarmSystem -->|High-Priority Banner| Push[📲 Critical Arrival Notification]
+        AlarmSystem -->|Full-Screen Takeover| Modal[🛑 Wake Alert Modal: Snooze / Dismiss]
+    end
+```
 
 ---
 
 ## 📱 Tech Stack
 
-| Component | Technology | Description |
+| Domain | Technology | Details |
 | :--- | :--- | :--- |
-| **Framework** | [Expo SDK 54](https://docs.expo.dev/versions/v54.0.0/) | React Native 0.81.5 with New Architecture enabled |
-| **Routing** | [Expo Router v6](https://docs.expo.dev/router/introduction/) | File-based navigation structure |
-| **Map Engine** | `react-native-webview` + Leaflet | Hardware-accelerated dark raster tile engine |
-| **Audio Engine** | `expo-av` + PCM Synthesis | Pure mathematical WAV waveform synthesis & looping |
-| **Location & Geofencing** | `expo-location` + `expo-task-manager` | Foreground service tracking & background geofences |
-| **Notifications** | `expo-notifications` | High-priority Android notification channels & banners |
-| **Geocoding & Routing** | Komoot Photon & Project OSRM | Decoupled, free, open geospatial web APIs |
+| **Framework** | [Expo SDK 54](https://docs.expo.dev/versions/v54.0.0/) | React Native `0.81.5`, React `19.1.0` |
+| **Language** | [TypeScript 5.9](https://www.typescriptlang.org/) | Strict mode, complete type safety |
+| **Navigation** | [Expo Router v6](https://docs.expo.dev/router/introduction/) | File-based typed routing (`app/`) |
+| **Map Rendering** | [MapLibre GL v4.7.1](https://maplibre.org/) via `react-native-webview` | Zero-API key vector maps, Esri Satellite, OpenFreeMap tiles |
+| **Audio Engine** | `expo-av` + Custom PCM Synthesizer | In-memory 16-bit WAV generation (4 custom alarm tones) |
+| **Haptics** | `expo-haptics` | Hardware-accelerated pulse patterns |
+| **Location & Geofence** | `expo-location` + `expo-task-manager` | Foreground location tracking & background geofences |
+| **Notifications** | `expo-notifications` | Ongoing sticky tracking notification & high-priority arrival alerts |
+| **Storage** | `@react-native-async-storage/async-storage` | Session recovery across app kills and phone reboots |
+| **Geospatial APIs** | [Komoot Photon](https://photon.komoot.io/) & [OSRM](http://project-osrm.org/) | Free open-source autocomplete, reverse-geocoding, and routing |
+| **CI / CD** | GitHub Actions | Automated Android Release APK compilation & GitHub release publishing |
 
 ---
 
@@ -56,14 +130,14 @@ Public transit commuters, late-night travelers, and daily passengers often take 
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (version **20.x** or newer recommended)
-- `npm` (bundled with Node) or `yarn` / `bun`
-- **Expo Go** mobile app on your physical phone ([Android Play Store](https://play.google.com/store/apps/details?id=host.exp.exponent) or [iOS App Store](https://apps.apple.com/app/expo-go/id982107779)), or an Android Emulator / iOS Simulator.
+- [Node.js](https://nodejs.org/) (version **20.x** LTS or newer recommended)
+- `npm` (bundled with Node), `yarn`, or `pnpm`
+- **Expo Go** app on your physical device ([Android Play Store](https://play.google.com/store/apps/details?id=host.exp.exponent) or [iOS App Store](https://apps.apple.com/app/expo-go/id982107779)), or an Android Emulator / iOS Simulator.
 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/WakePoint.git
+git clone https://github.com/vardhineeditharak/WakePoint.git
 cd WakePoint
 ```
 
@@ -73,33 +147,33 @@ cd WakePoint
 npm install
 ```
 
-### 3. Run the Development Server
+### 3. Start the Development Server
 
 ```bash
 npx expo start
 ```
 
-### 4. Launch on Your Target Platform
+### 4. Run on Your Platform
 
-- **Physical Phone (Expo Go)**: Scan the QR code shown in your terminal using the **Expo Go** app (Android) or the native **Camera** app (iOS).
+- **Physical Device**: Scan the QR code displayed in your terminal using **Expo Go** (Android) or the native **Camera app** (iOS).
 - **Android Emulator**: Press <kbd>a</kbd> in your terminal (requires Android Studio).
-- **iOS Simulator**: Press <kbd>i</kbd> in your terminal (requires macOS & Xcode).
-- **Web Browser**: Press <kbd>w</kbd> in your terminal to preview in your desktop browser.
+- **iOS Simulator**: Press <kbd>i</kbd> in your terminal (requires macOS and Xcode).
+- **Web Browser**: Press <kbd>w</kbd> in your terminal.
 
 ---
 
 ## 🛠️ Testing Background Location & Alarms
 
 > [!NOTE]
-> On Android, background location tasks and foreground notification services work best on an **Android Development Build** (`npx expo run:android`) or the standalone compiled **APK**. Standard Expo Go enforces restrictions on persistent background tasks.
+> Persistent background location tasks and foreground services operate under strict OS battery management. While the map and alarms function inside Expo Go, background tracking when the screen is turned off works most reliably on an **Android Development Build** or a **Standalone APK**.
 
-To run a native local development build on Android:
+To compile and launch a local native development build on Android:
 
 ```bash
-# 1. Generate the native android project folder
+# Generate native Android project files
 npx expo prebuild --platform android
 
-# 2. Compile and launch directly on your connected device or emulator
+# Compile and install directly to your connected phone or emulator
 npx expo run:android
 ```
 
@@ -107,28 +181,23 @@ npx expo run:android
 
 ## 📦 Building a Standalone Android APK (Free via GitHub Actions)
 
-You don't need Android Studio or a high-end machine to compile the installable `.apk`. This repository includes a complete GitHub Actions workflow ([`.github/workflows/build-apk.yml`](.github/workflows/build-apk.yml)).
+You do **not** need a local Android Studio installation or a powerful computer to generate installable `.apk` files. WakePoint comes with an automated GitHub Actions CI/CD workflow:
 
-1. Push this repository to your GitHub account:
+### Option A: Automatic Trigger on Version Update (Recommended)
+1. Bump the `"version"` field in [`package.json`](package.json) (e.g. from `1.2.0` to `1.2.1`).
+2. Commit and push to `main`:
    ```bash
-   git add .
-   git commit -m "Configure WakePoint"
+   git add package.json app.json
+   git commit -m "chore(release): bump version to 1.2.1"
    git push origin main
    ```
-2. In your GitHub repository, navigate to the **Actions** tab.
-3. In the sidebar, select **Build WakePoint Android APK**.
-4. Click **Run workflow** $\rightarrow$ select branch `main` $\rightarrow$ click **Run workflow**.
-5. After ~3 to 5 minutes, open the completed workflow run, scroll down to **Artifacts**, and download your installable `WakePoint-v1.1.0-build-X-APK` file!
+3. GitHub Actions automatically detects the version bump, compiles the release APK, uploads the artifact, and creates a tagged **GitHub Release** with the APK file attached!
 
----
-
-## 🎨 Design & Brand Identity
-
-The WakePoint identity is built on a minimal, non-letter geometric system: a precision geofence boundary circle enclosing concentric proximity wave rings and a central destination waypoint beacon.
-
-<p align="center">
-  <img src="./assets/images/brand-guidelines.png" alt="WakePoint Brand Guidelines" width="100%" />
-</p>
+### Option B: Manual Trigger
+1. Go to your repository on GitHub and click the **Actions** tab.
+2. Select **Build WakePoint Android APK** from the left workflow list.
+3. Click **Run workflow** $\rightarrow$ select branch `main` $\rightarrow$ click **Run workflow**.
+4. Once completed (~3 to 5 minutes), download the APK under the run's **Artifacts** section or from **Releases**.
 
 ---
 
@@ -136,51 +205,97 @@ The WakePoint identity is built on a minimal, non-letter geometric system: a pre
 
 ```
 WakePoint/
-├── app/
-│   ├── _layout.tsx              # Root app layout, SafeAreaProvider & WakePointProvider
-│   └── index.tsx                # Main Screen (WakeMapView, SearchBar, RadiusSlider, Dock)
-├── components/
-│   ├── index.ts                 # Component exports barrel
-│   ├── WakeMapView.tsx          # Leaflet WebView dark tile map engine
-│   ├── SearchBar.tsx            # Floating search bar with Photon API debounced autocomplete
-│   ├── RadiusSliderWidget.tsx   # Collapsible bottom sheet with arrival radius slider
-│   ├── AlarmOptionsModal.tsx    # Sound tone & vibration selector modal
-│   ├── AlarmAlertModal.tsx      # Full-screen ringing arrival alarm alert modal
-│   └── PermissionModal.tsx      # Pre-flight location & notification permission handler
-├── context/
-│   └── WakePointContext.tsx     # Global context for GPS tracking, distance, routes & alarms
-├── services/
-│   ├── index.ts                 # Services exports barrel
-│   ├── alarmSoundService.ts     # In-memory PCM WAV audio synthesizer & expo-av alarm engine
-│   ├── apiService.ts            # Komoot Photon autocomplete & OSRM driving route APIs
-│   └── backgroundTask.ts        # Expo TaskManager proximity & location update task
 ├── .github/
 │   └── workflows/
-│       └── build-apk.yml        # Automated GitHub Actions workflow for building Android APKs
-├── app.json                     # Expo configuration, permissions, and background modes
-├── package.json
-└── tsconfig.json
+│       └── build-apk.yml            # CI/CD workflow for automated APK releases
+├── app/
+│   ├── _layout.tsx                  # Root layout, theme provider, and global context injection
+│   └── index.tsx                    # Main navigation screen, map viewport, floating search, and dock
+├── assets/
+│   └── images/
+│       ├── brand-banner.png         # Project hero banner
+│       ├── brand-guidelines.png     # Visual identity & brand system
+│       ├── icon.png                 # App icon
+│       ├── splash-icon.png          # App splash screen graphic
+│       └── android-icon-*.png       # Android adaptive icon layers
+├── components/
+│   ├── index.ts                     # Component exports barrel
+│   ├── WakeMapView.tsx              # MapLibre GL WebView engine with themes & gesture bindings
+│   ├── SearchBar.tsx                # Photon autocomplete, debouncing, & Indian metro hub presets
+│   ├── RadiusSliderWidget.tsx       # Bottom drawer with radius slider, ETA display, & alarm toggle
+│   ├── AlarmOptionsModal.tsx        # Tone selector (4 PCM waveforms) & vibration style chooser
+│   ├── AlarmAlertModal.tsx          # Full-screen ringing arrival alarm with snooze & dismiss
+│   └── PermissionModal.tsx          # Graceful location & notification permission prompt
+├── constants/
+│   ├── index.ts                     # Constants exports barrel
+│   ├── theme.ts                     # Color tokens & tile server configurations
+│   └── mapDarkTheme.ts              # Custom in-memory high-contrast dark vector map style
+├── context/
+│   └── WakePointContext.tsx         # Global state: GPS tracking, distance, routes, alarms & permissions
+├── services/
+│   ├── index.ts                     # Services exports barrel
+│   ├── alarmSoundService.ts         # In-memory 16-bit PCM WAV audio synthesizer & expo-av loop engine
+│   ├── apiService.ts                # Photon geocoding, reverse geocoding, & OSRM driving routes
+│   ├── backgroundTask.ts            # TaskManager foreground service, geofencing & notification shade
+│   └── sessionStorage.ts            # AsyncStorage persistence for process-kill recovery
+├── app.json                         # Expo configuration, permissions, plugins & background modes
+├── package.json                     # Dependencies, scripts & metadata
+└── tsconfig.json                    # TypeScript compiler configuration
 ```
 
 ---
 
-## 🔒 Permissions Used
+## 🔒 Permissions Overview
 
-WakePoint prompts users gracefully using an in-app pre-flight permission modal:
+WakePoint handles permissions transparently through a pre-flight modal:
 
-1. **Foreground Location (`ACCESS_FINE_LOCATION`)**: Displays your position on the map, calculates real-time distance to the destination, and draws routing polylines.
-2. **Background Location (`ACCESS_BACKGROUND_LOCATION`)**: Required by iOS and Android so the proximity watcher can trigger the alarm even if your phone screen is off or the app is minimized.
-3. **Notifications (`POST_NOTIFICATIONS`)**: Displays high-priority arrival notifications with custom channel alarms.
-4. **Wake Lock & Audio Background Mode**: Keeps the alarm sound ringing without being silenced by OS battery optimization.
+| Permission | Identifier | Purpose |
+| :--- | :--- | :--- |
+| **Foreground Location** | `ACCESS_FINE_LOCATION` | Shows your current position on the map, calculates route distance, and draws real-time navigation paths. |
+| **Background Location** | `ACCESS_BACKGROUND_LOCATION` | Keeps location tracking active when your phone screen is off or when switching to other apps. |
+| **Foreground Service** | `FOREGROUND_SERVICE_LOCATION` | Keeps Android from killing the tracking process during long commutes. |
+| **Notifications** | `POST_NOTIFICATIONS` | Displays the ongoing distance notification and rings the high-priority arrival wake-up banner. |
+| **Wake Lock** | `WAKE_LOCK` | Keeps the audio and haptic engine pulsing until the user wakes up and dismisses the alarm. |
+
+---
+
+## 🎨 Design & Brand Identity
+
+WakePoint's visual identity balances minimalist dark aesthetics with utilitarian clarity. The logo system uses a precision outer geofence perimeter ring, concentric proximity sonar waves, and a central glowing destination beacon.
+
+<p align="center">
+  <img src="./assets/images/brand-guidelines.png" alt="WakePoint Brand Guidelines" width="100%" />
+</p>
+
+### Color Palette
+
+| Name | Hex | Usage |
+| :--- | :--- | :--- |
+| **Background Dark** | `#0B0F19` | Main background & map canvas depth |
+| **Surface Navy** | `#0F172A` | Floating widgets, search cards, and modal sheets |
+| **Primary Indigo** | `#6366F1` | Brand accents, active buttons, and target pins |
+| **Success Emerald** | `#10B981` | Safe geofence status, arrival alerts, and confirmed states |
+| **Danger Coral** | `#EF4444` | Ringing alarm state, perimeter breach alerts, and dismiss actions |
+| **Text Bright** | `#F8FAFC` | High-contrast primary headings and street labels |
 
 ---
 
 ## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome! Feel free to open an issue or submit a pull request.
+Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feat/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'feat: add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feat/AmazingFeature`)
+5. Open a Pull Request
 
 ---
 
 ## 📄 License
 
-This project is open source and available under the [MIT License](LICENSE).
+Distributed under the MIT License. See [`LICENSE`](LICENSE) for more information.
+
+<p align="center">
+  Built with ❤️ for commuters and travelers everywhere.
+</p>
