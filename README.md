@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <strong>Next-Generation GPS Proximity Arrival Alarm & Vector Dark Map Navigation</strong><br />
-  <em>Never miss your transit stop again. WakePoint rings continuous loud alarms and rhythmic haptics the moment you enter your destination perimeter.</em>
+  <strong>🚀 Next-Generation GPS Proximity Arrival Alarm & Vector Dark Map Navigation 🗺️</strong><br />
+  <em>😴 Never miss your transit stop again! WakePoint rings continuous loud alarms 🔊 and rhythmic haptics 📳 the moment you enter your destination perimeter 🎯.</em>
 </p>
 
 <p align="center">
@@ -22,54 +22,54 @@
 
 ## 💡 The Problem & Solution
 
-Daily commuters, late-night travelers, and passengers on buses, suburban trains, metros, and cabs often want to nap or read without the anxiety of missing their transfer or stop.
+Daily commuters 🚆, late-night travelers 🌙, and passengers on buses 🚌, suburban trains 🚊, metros 🚇, and cabs 🚕 often want to nap 💤 or read without the constant anxiety 😰 of missing their transfer or stop.
 
-- ❌ **Why standard alarms fail**: Clock alarms are strictly time-bound. If your bus gets stuck in traffic or your train stops on an outer track, a timer goes off too early or too late.
-- ✅ **The WakePoint difference**: WakePoint is strictly **location-bound (geofenced)**. You specify where you want to wake up and your desired arrival radius (from 100 meters to 5.0 kilometers). WakePoint tracks your real-time GPS coordinates in the background and rings loud, looping alarms and rhythmic vibration pulses the instant you cross into your target perimeter—regardless of route delays.
+- ❌ **Why standard alarms fail**: Clock alarms are strictly time-bound ⏰. If your bus gets stuck in traffic 🚦 or your train stops on an outer track 🛤️, a timer goes off too early or too late!
+- ✅ **The WakePoint difference**: WakePoint is strictly **location-bound (geofenced)** 📍. You specify where you want to wake up and dial in your desired arrival radius (from 100 meters to 5.0 kilometers) 🎯. WakePoint tracks your real-time GPS coordinates in the background 🛰️ and rings loud, looping alarms 🔊 and rhythmic vibration pulses 📳 the instant you cross into your target perimeter—regardless of route delays ⏱️!
 
 ---
 
 ## ✨ Key Features (v1.2.0)
 
 ### 🗺️ High-Contrast Dark Vector Map Engine
-- **Powered by MapLibre GL v4.7.1 & OpenFreeMap**: Zero Google Maps billing, zero API keys, and zero rate limits.
-- **Custom In-Memory Dark Theme**: Calibrated specifically for high outdoor and nighttime contrast with razor-sharp road hierarchies, sapphire water bodies, and crisp typography.
-- **Multi-Theme Switcher**: Instant one-tap switching between **Dark Vector**, **Esri World Satellite Imagery**, and **OpenFreeMap Liberty Streets**.
-- **Interactive Controls**: Fluid pinch-to-zoom, smooth camera `flyTo` transitions, route bounding, and one-tap re-centering on your live position.
+- ⚡ **Powered by MapLibre GL v4.7.1 & OpenFreeMap**: Zero Google Maps billing 💸, zero API keys 🔑, and zero rate limits 🚫.
+- 🎨 **Custom In-Memory Dark Theme**: Calibrated specifically for high outdoor and nighttime contrast with razor-sharp road hierarchies 🛣️, sapphire water bodies 🌊, and crisp typography 🔤.
+- 🔄 **Multi-Theme Switcher**: Instant one-tap switching between **Dark Vector** 🌑, **Esri World Satellite Imagery** 🛰️, and **OpenFreeMap Liberty Streets** 🏙️.
+- 🕹️ **Interactive Controls**: Fluid pinch-to-zoom 🔍, smooth camera `flyTo` transitions ✈️, route bounding 📐, and one-tap re-centering on your live position 📍.
 
 ### 🔊 Offline Base64 PCM Audio Synthesis
-- **Zero Asset Dependencies**: Synthesizes pure 16-bit PCM WAV audio waveforms dynamically in memory. No missing MP3 asset bugs, zero network streaming delay, 100% offline.
-- **4 Distinct Alarm Tones**:
+- 📦 **Zero Asset Dependencies**: Synthesizes pure 16-bit PCM WAV audio waveforms dynamically in memory 🧠. No missing MP3 asset bugs 🐛, zero network streaming delay ⚡, 100% offline 📴.
+- 🎶 **4 Distinct Alarm Tones**:
   - 🚨 **Urgent Radar**: Rapid, alternating dual-pitch beeps designed to pierce deep sleep.
   - 📢 **Emergency Siren**: Sweeping frequency modulation for high-urgency wake-ups.
   - 🔔 **Classic Bell**: Harmonic, decaying chimes with realistic acoustic attack.
   - 🎵 **Upbeat Chime**: Bright, pleasant melodic arpeggio.
 
 ### 📳 Rhythmic Multi-Pattern Haptic Engine
-- **Custom Tactile Pulses**: Three selectable haptic algorithms (**Pulse**, **Heavy**, **Gentle**) using `expo-haptics`.
-- **Sleep-Breaking Tactile Feedback**: Cycles through synchronized continuous vibrations alongside the audio engine.
+- 🎛️ **Custom Tactile Pulses**: Three selectable haptic algorithms (**Pulse** 💓, **Heavy** 💥, **Gentle** 🪶) using `expo-haptics`.
+- ⚡ **Sleep-Breaking Tactile Feedback**: Cycles through synchronized continuous vibrations alongside the audio engine 🔔.
 
 ### 🔔 Persistent Notification Shade with Quick Actions
-- **Ongoing Foreground Status**: Stays pinned in your notification tray while tracking, showing **live distance remaining** and your arrival perimeter.
-- **One-Tap 'Turn Off Alarm' Action**: Dismiss active alarms or tracking directly from the Android lockscreen or notification tray without reopening the app.
+- 📌 **Ongoing Foreground Status**: Stays pinned in your notification tray while tracking, showing **live distance remaining** 📏 and your arrival perimeter 🎯.
+- 🛑 **One-Tap 'Turn Off Alarm' Action**: Dismiss active alarms or tracking directly from the Android lockscreen or notification tray without reopening the app 📱.
 
 ### 🛡️ Session Persistence & Crash Resilience
-- **Persistent Storage Engine**: Powered by `@react-native-async-storage/async-storage`.
-- **Survives Process Eviction**: If Android or iOS evicts the app from RAM or the user restarts their phone, the active destination, radius, and alarm configuration are restored on launch.
+- 💾 **Persistent Storage Engine**: Powered by `@react-native-async-storage/async-storage` 🗄️.
+- 🔄 **Survives Process Eviction**: If Android or iOS evicts the app from RAM or the user restarts their phone 🔌, the active destination, radius, and alarm configuration are restored on launch 🚀.
 
 ### 🔍 Smart Geocoding & Route Navigation
-- **Komoot Photon Autocomplete**: Free, lightning-fast search with 300ms debouncing and live GPS coordinate biasing.
-- **Live Reverse Geocoding**: Long-press or drag the pin anywhere on the globe to inspect the street address.
-- **Turn-by-Turn OSRM Route Navigation**: Fetches live driving polylines, displaying accurate driving distance (km) and estimated travel duration (ETA).
-- **🇮🇳 Indian Metro Hub Presets**: Quick-select presets for major transit hubs across Bengaluru, Mumbai, Delhi-NCR, Hyderabad, Chennai, Kolkata, and Pune.
+- ⚡ **Komoot Photon Autocomplete**: Free, lightning-fast search with 300ms debouncing and live GPS coordinate biasing 🎯.
+- 📍 **Live Reverse Geocoding**: Long-press or drag the pin anywhere on the globe to inspect the street address 🏷️.
+- 🚗 **Turn-by-Turn OSRM Route Navigation**: Fetches live driving polylines, displaying accurate driving distance (km) 🛣️ and estimated travel duration (ETA) ⏱️.
+- 🇮🇳 **Indian Metro Hub Presets**: Quick-select presets for major transit hubs across Bengaluru, Mumbai, Delhi-NCR, Hyderabad, Chennai, Kolkata, and Pune 🚉.
 
 ### 🎚️ Dynamic Geofence Radius Slider
-- **Granular Adjustments**: Slide smoothly from **100 meters to 5.0 kilometers** (50m increments) with instant visual map circle scaling.
-- **Quick Preset Chips**: Jump directly to `250m`, `500m`, `1 km`, `2 km`, or `5 km` with a single tap.
+- 📏 **Granular Adjustments**: Slide smoothly from **100 meters to 5.0 kilometers** (50m increments) with instant visual map circle scaling 🔵.
+- ⚡ **Quick Preset Chips**: Jump directly to `250m`, `500m`, `1 km`, `2 km`, or `5 km` with a single tap 🎯.
 
 ### 🤖 Automated GitHub Actions CI/CD Pipeline
-- **Zero-Setup APK Builds**: Pre-configured workflow ([`.github/workflows/build-apk.yml`](.github/workflows/build-apk.yml)) that detects version bumps in `package.json` / `app.json` or Git tag pushes.
-- **Auto-Publishing**: Automatically builds, signs, and attaches the installable standalone release `.apk` to GitHub Releases and artifacts.
+- 📦 **Zero-Setup APK Builds**: Pre-configured workflow ([`.github/workflows/build-apk.yml`](.github/workflows/build-apk.yml)) that detects version bumps in `package.json` / `app.json` or Git tag pushes 🏷️.
+- 🚀 **Auto-Publishing**: Automatically builds, signs, and attaches the installable standalone release `.apk` to GitHub Releases and artifacts 📲.
 
 ---
 
