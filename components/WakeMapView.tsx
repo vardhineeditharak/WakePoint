@@ -20,7 +20,7 @@ export interface WakeMapRef {
   fitBounds: (coords: GeoCoordinate[]) => void;
 }
 
-export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
+export const WakeMapView = React.memo(forwardRef<WakeMapRef, WakeMapViewProps>(({
   userLocation,
   destination,
   radius,
@@ -138,9 +138,7 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
     }
   };
 
-  const initialLat = destination ? destination.latitude : userLocation ? userLocation.latitude : 12.9756;
-  const initialLng = destination ? destination.longitude : userLocation ? userLocation.longitude : 77.6066;
-
+  // Static HTML document (ZERO reloads during app lifecycle)
   const htmlContent = React.useMemo(() => `
 <!DOCTYPE html>
 <html>
@@ -247,12 +245,12 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
       return DARK_STYLE;
     }
 
-    let currentTheme = '${mapTheme || 'dark'}';
+    let currentTheme = 'dark';
 
     const map = new maplibregl.Map({
       container: 'map',
       style: getStyleUrl(currentTheme),
-      center: [${initialLng}, ${initialLat}],
+      center: [77.6066, 12.9756],
       zoom: 14,
       attributionControl: false
     });
@@ -264,6 +262,11 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
     let isDraggingPin = false;
 
     let cachedData = null;
+    let lastUserCoords = null;
+    let lastDestCoords = null;
+    let lastRadius = null;
+    let lastIsActive = null;
+    let lastRouteKey = null;
 
     // Helper: Compute exact geographic circle polygon in GeoJSON
     function createGeoJsonCircle(centerLngLat, radiusInMeters, points = 64) {
@@ -387,6 +390,10 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
 
     map.on('style.load', function() {
       ensureLayers();
+      // Reset caches so layers re-populate on the new map style
+      lastRadius = null;
+      lastIsActive = null;
+      lastRouteKey = null;
       if (cachedData) {
         renderMapData(cachedData);
       }
@@ -396,40 +403,53 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
       cachedData = data;
       if (!map.loaded() || !map.getSource('radius-circle-source')) return;
 
-      // 1. User Location (Always visible Electric Blue Beacon)
+      // 1. User Location (Only update marker when coordinates actually change)
       if (data.userLocation) {
         const userCoords = [data.userLocation.lng, data.userLocation.lat];
-        if (!userMarker) {
-          const userEl = document.createElement('div');
-          userEl.className = 'user-marker-wrap';
-          userEl.innerHTML = '<div class="user-marker-pulse"></div><div class="user-marker-core"></div>';
-          userMarker = new maplibregl.Marker({ element: userEl, anchor: 'center' })
-            .setLngLat(userCoords)
-            .addTo(map);
+        const userMoved = !lastUserCoords || lastUserCoords[0] !== userCoords[0] || lastUserCoords[1] !== userCoords[1];
 
-          if (!data.destination) {
-            map.flyTo({ center: userCoords, zoom: 15, duration: 800 });
-          }
-        } else {
-          userMarker.setLngLat(userCoords);
-          if (!userMarker.getElement().parentNode) {
-            userMarker.addTo(map);
+        if (userMoved) {
+          lastUserCoords = userCoords;
+          if (!userMarker) {
+            const userEl = document.createElement('div');
+            userEl.className = 'user-marker-wrap';
+            userEl.innerHTML = '<div class="user-marker-pulse"></div><div class="user-marker-core"></div>';
+            userMarker = new maplibregl.Marker({ element: userEl, anchor: 'center' })
+              .setLngLat(userCoords)
+              .addTo(map);
+
+            if (!data.destination && !window.hasCenteredInitialUser) {
+              window.hasCenteredInitialUser = true;
+              map.flyTo({ center: userCoords, zoom: 15, duration: 800 });
+            }
+          } else {
+            userMarker.setLngLat(userCoords);
+            if (!userMarker.getElement().parentNode) {
+              userMarker.addTo(map);
+            }
           }
         }
       } else if (userMarker) {
         userMarker.remove();
         userMarker = null;
+        lastUserCoords = null;
       }
 
-      // 2. Destination Pin & Arrival Radius Circle
+      // 2. Destination Pin & Arrival Radius Circle (Optimized selective rendering)
       if (data.destination) {
         const destCoords = [data.destination.lng, data.destination.lat];
         const radiusMeters = data.radius || 1000;
         const isActive = !!data.isAlarmActive;
         const color = isActive ? '#10B981' : '#6366F1';
 
-        // Update / create destination marker
+        const destMoved = !lastDestCoords || lastDestCoords[0] !== destCoords[0] || lastDestCoords[1] !== destCoords[1];
+        const activeChanged = lastIsActive !== isActive;
+        const radiusChanged = lastRadius !== radiusMeters;
+
+        // Update / create destination marker only if coordinates or active state changed
         if (!destMarker) {
+          lastDestCoords = destCoords;
+          lastIsActive = isActive;
           const destEl = document.createElement('div');
           destEl.innerHTML = getDestPinHtml(isActive);
 
@@ -448,7 +468,7 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
           });
           destMarker.on('drag', function() {
             const curPos = destMarker.getLngLat();
-            const liveCircle = createGeoJsonCircle([curPos.lng, curPos.lat], radiusMeters);
+            const liveCircle = createGeoJsonCircle([curPos.lng, curPos.lat], lastRadius || radiusMeters);
             const source = map.getSource('radius-circle-source');
             if (source) source.setData(liveCircle);
           });
@@ -457,6 +477,7 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
             const container = destMarker.getElement().querySelector('.pin-container');
             if (container) container.classList.remove('is-dragging');
             const newPos = destMarker.getLngLat();
+            lastDestCoords = [newPos.lng, newPos.lat];
             window.ReactNativeWebView.postMessage(JSON.stringify({
               type: 'MARKER_DRAG_END',
               lat: newPos.lat,
@@ -464,54 +485,74 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
             }));
           });
         } else {
-          if (!isDraggingPin) {
+          if (destMoved && !isDraggingPin) {
             destMarker.setLngLat(destCoords);
+            lastDestCoords = destCoords;
           }
-          destMarker.getElement().innerHTML = getDestPinHtml(isActive);
+          if (activeChanged) {
+            destMarker.getElement().innerHTML = getDestPinHtml(isActive);
+            lastIsActive = isActive;
+          }
           if (!destMarker.getElement().parentNode) {
             destMarker.addTo(map);
           }
         }
 
-        // Update GeoJSON radius circle
-        const circleData = createGeoJsonCircle(destCoords, radiusMeters);
-        const radiusSource = map.getSource('radius-circle-source');
-        if (radiusSource) {
-          radiusSource.setData(circleData);
-        }
+        // Update GeoJSON radius circle only if dest, radius, or active state changed
+        if (destMoved || radiusChanged || activeChanged) {
+          lastRadius = radiusMeters;
+          const circleData = createGeoJsonCircle(destCoords, radiusMeters);
+          const radiusSource = map.getSource('radius-circle-source');
+          if (radiusSource) {
+            radiusSource.setData(circleData);
+          }
 
-        if (map.getLayer('radius-circle-fill')) {
-          map.setPaintProperty('radius-circle-fill', 'fill-color', color);
-          map.setPaintProperty('radius-circle-fill', 'fill-opacity', isActive ? 0.22 : 0.16);
-        }
-        if (map.getLayer('radius-circle-stroke')) {
-          map.setPaintProperty('radius-circle-stroke', 'line-color', color);
+          if (map.getLayer('radius-circle-fill')) {
+            map.setPaintProperty('radius-circle-fill', 'fill-color', color);
+            map.setPaintProperty('radius-circle-fill', 'fill-opacity', isActive ? 0.22 : 0.16);
+          }
+          if (map.getLayer('radius-circle-stroke')) {
+            map.setPaintProperty('radius-circle-stroke', 'line-color', color);
+          }
         }
       } else {
         if (destMarker) {
           destMarker.remove();
           destMarker = null;
+          lastDestCoords = null;
+          lastIsActive = null;
         }
-        const radiusSource = map.getSource('radius-circle-source');
-        if (radiusSource) {
-          radiusSource.setData({ type: 'FeatureCollection', features: [] });
+        if (lastRadius !== null) {
+          lastRadius = null;
+          const radiusSource = map.getSource('radius-circle-source');
+          if (radiusSource) {
+            radiusSource.setData({ type: 'FeatureCollection', features: [] });
+          }
         }
       }
 
-      // 3. Routing Polyline
+      // 3. Routing Polyline (Only update when route coordinate points change)
       const routeSource = map.getSource('route-source');
       if (routeSource) {
-        if (data.route && data.route.length > 1) {
-          routeSource.setData({
-            type: 'Feature',
-            geometry: {
-              type: 'LineString',
-              coordinates: data.route
-            },
-            properties: {}
-          });
-        } else {
-          routeSource.setData({ type: 'FeatureCollection', features: [] });
+        const hasRoute = data.route && data.route.length > 1;
+        const currentRouteKey = hasRoute
+          ? (data.route.length + '_' + data.route[0][0].toFixed(3) + '_' + data.route[data.route.length - 1][0].toFixed(3))
+          : '';
+
+        if (currentRouteKey !== lastRouteKey) {
+          lastRouteKey = currentRouteKey;
+          if (hasRoute) {
+            routeSource.setData({
+              type: 'Feature',
+              geometry: {
+                type: 'LineString',
+                coordinates: data.route
+              },
+              properties: {}
+            });
+          } else {
+            routeSource.setData({ type: 'FeatureCollection', features: [] });
+          }
         }
       }
     }
@@ -527,7 +568,7 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
   </script>
 </body>
 </html>
-  `, [initialLat, initialLng, mapTheme]);
+  `, []);
 
   return (
     <View style={styles.container}>
@@ -547,7 +588,7 @@ export const WakeMapView = forwardRef<WakeMapRef, WakeMapViewProps>(({
       />
     </View>
   );
-});
+}));
 
 WakeMapView.displayName = 'WakeMapView';
 

@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useWakePoint } from '../context/WakePointContext';
 
-export const AlarmAlertModal: React.FC = () => {
+export const AlarmAlertModal: React.FC = React.memo(() => {
   const insets = useSafeAreaInsets();
   const {
     showAlarmAlertModal,
@@ -23,10 +23,11 @@ export const AlarmAlertModal: React.FC = () => {
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0.4)).current;
+  const loopAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
     if (showAlarmAlertModal) {
-      Animated.loop(
+      const loop = Animated.loop(
         Animated.parallel([
           Animated.sequence([
             Animated.timing(pulseAnim, {
@@ -53,11 +54,24 @@ export const AlarmAlertModal: React.FC = () => {
             }),
           ]),
         ])
-      ).start();
+      );
+      loopAnimationRef.current = loop;
+      loop.start();
     } else {
+      if (loopAnimationRef.current) {
+        loopAnimationRef.current.stop();
+        loopAnimationRef.current = null;
+      }
       pulseAnim.setValue(1);
       glowAnim.setValue(0.4);
     }
+
+    return () => {
+      if (loopAnimationRef.current) {
+        loopAnimationRef.current.stop();
+        loopAnimationRef.current = null;
+      }
+    };
   }, [showAlarmAlertModal, pulseAnim, glowAnim]);
 
   return (
@@ -122,7 +136,9 @@ export const AlarmAlertModal: React.FC = () => {
       </View>
     </Modal>
   );
-};
+});
+
+AlarmAlertModal.displayName = 'AlarmAlertModal';
 
 const styles = StyleSheet.create({
   overlay: {

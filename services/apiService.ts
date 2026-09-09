@@ -45,6 +45,20 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
   }
 }
 
+const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const ROUTE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const MAX_CACHE_ENTRIES = 50;
+
+const photonCache = new Map<string, { data: SearchResultItem[]; timestamp: number }>();
+const routeCache = new Map<string, { data: RouteResponse; timestamp: number }>();
+
+function pruneCache<T>(cache: Map<string, { data: T; timestamp: number }>, max: number) {
+  if (cache.size > max) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey) cache.delete(oldestKey);
+  }
+}
+
 /**
  * 2. Autocomplete Geocoding Search Engine (Komoot Photon API)
  * Targets: https://photon.komoot.io/api/
@@ -55,11 +69,22 @@ export async function photonSearch(
   userLocation?: GeoCoordinate | null,
   limit = 8
 ): Promise<SearchResultItem[]> {
-  if (!query || query.trim().length === 0) {
+  const trimmed = query ? query.trim() : '';
+  if (!trimmed) {
     return [];
   }
 
-  const encodedQuery = encodeURIComponent(query.trim());
+  // Cache key includes query and rounded coordinates (if available) for spatial biasing
+  const latKey = userLocation ? userLocation.latitude.toFixed(2) : 'none';
+  const lonKey = userLocation ? userLocation.longitude.toFixed(2) : 'none';
+  const cacheKey = `${trimmed.toLowerCase()}_${limit}_${latKey}_${lonKey}`;
+
+  const cached = photonCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < SEARCH_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const encodedQuery = encodeURIComponent(trimmed);
   let url = `https://photon.komoot.io/api/?q=${encodedQuery}&limit=${limit}`;
 
   // Inject spatial biasing coordinates if current user location is available
@@ -78,7 +103,7 @@ export async function photonSearch(
 
     if (!response.ok) {
       console.warn(`[Photon API] HTTP Error: ${response.status} ${response.statusText}`);
-      return [];
+      return cached ? cached.data : [];
     }
 
     const payload = await response.json();
@@ -121,8 +146,13 @@ export async function photonSearch(
           ? addressParts.join(', ')
           : `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
 
+        // Stable deterministic ID without Date.now() to preserve FlatList item memoization
+        const stableId = props.osm_id
+          ? `photon_${props.osm_id}`
+          : `photon_${latitude.toFixed(5)}_${longitude.toFixed(5)}_${index}`;
+
         return {
-          id: `photon_${props.osm_id || index}_${Date.now()}`,
+          id: stableId,
           title: name,
           address: fullAddress,
           latitude,
@@ -133,10 +163,13 @@ export async function photonSearch(
         };
       });
 
+    pruneCache(photonCache, MAX_CACHE_ENTRIES);
+    photonCache.set(cacheKey, { data: searchResults, timestamp: Date.now() });
+
     return searchResults;
   } catch (error: any) {
     console.error('[Photon API] Search fetch failed:', error.message || error);
-    return [];
+    return cached ? cached.data : [];
   }
 }
 
@@ -151,6 +184,13 @@ export async function calculateRoutePath(
 ): Promise<RouteResponse | null> {
   if (!start || !end) {
     return null;
+  }
+
+  // Round to 4 decimal places (~11m resolution) for robust route caching
+  const routeKey = `${start.latitude.toFixed(4)},${start.longitude.toFixed(4)}->${end.latitude.toFixed(4)},${end.longitude.toFixed(4)}`;
+  const cached = routeCache.get(routeKey);
+  if (cached && Date.now() - cached.timestamp < ROUTE_CACHE_TTL_MS) {
+    return cached.data;
   }
 
   // Format: start = lng,lat & end = lng,lat
@@ -170,7 +210,7 @@ export async function calculateRoutePath(
 
     if (!response.ok) {
       console.warn(`[Routing API] HTTP Error: ${response.status} ${response.statusText}`);
-      return null;
+      return cached ? cached.data : null;
     }
 
     const payload = await response.json();
@@ -194,13 +234,18 @@ export async function calculateRoutePath(
       longitude: coord[0],
     }));
 
-    return {
+    const result: RouteResponse = {
       coordinates,
       distanceMeters: primaryRoute.distance || 0,
       durationSeconds: primaryRoute.duration || 0,
     };
+
+    pruneCache(routeCache, MAX_CACHE_ENTRIES);
+    routeCache.set(routeKey, { data: result, timestamp: Date.now() });
+
+    return result;
   } catch (error: any) {
     console.error('[Routing API] Route calculation fetch failed:', error.message || error);
-    return null;
+    return cached ? cached.data : null;
   }
 }

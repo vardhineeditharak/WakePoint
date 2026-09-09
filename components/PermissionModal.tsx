@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useWakePoint } from '../context/WakePointContext';
 
-export const PermissionModal: React.FC = () => {
+export const PermissionModal: React.FC = React.memo(() => {
   const insets = useSafeAreaInsets();
   const {
     showPermissionModal,
@@ -20,10 +20,14 @@ export const PermissionModal: React.FC = () => {
     permissions,
   } = useWakePoint();
 
-  const handleGrant = async () => {
+  const handleGrant = React.useCallback(async () => {
     dismissPermissionModal();
     await requestAllPermissions();
-  };
+  }, [dismissPermissionModal, requestAllPermissions]);
+
+  if (!showPermissionModal) {
+    return null;
+  }
 
   return (
     <Modal
@@ -96,7 +100,9 @@ export const PermissionModal: React.FC = () => {
       </View>
     </Modal>
   );
-};
+});
+
+PermissionModal.displayName = 'PermissionModal';
 
 const styles = StyleSheet.create({
   overlay: {

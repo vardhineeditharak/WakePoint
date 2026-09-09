@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Keyboard,
   TouchableWithoutFeedback,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,7 +24,7 @@ type PresetCategory = 'All' | 'Metro' | 'Airport' | 'Train' | 'Tech Hub';
 
 const CATEGORIES: PresetCategory[] = ['All', 'Metro', 'Airport', 'Train', 'Tech Hub'];
 
-export const SearchBar: React.FC<SearchBarProps> = ({
+export const SearchBar: React.FC<SearchBarProps> = React.memo(({
   onCenterUserLocation,
   onCenterDestination,
 }) => {
@@ -55,7 +56,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     };
   }, []);
 
-  const handleInputChange = (text: string) => {
+  const handleInputChange = useCallback((text: string) => {
     setInputText(text);
 
     if (debounceTimerRef.current) {
@@ -65,27 +66,62 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     debounceTimerRef.current = setTimeout(() => {
       searchDestinations(text);
     }, 300);
-  };
+  }, [searchDestinations]);
 
-  const handleClear = () => {
+  const handleClear = useCallback(() => {
     setInputText('');
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
     searchDestinations('');
-  };
+  }, [searchDestinations]);
 
-  const handleDismissDropdown = () => {
+  const handleDismissDropdown = useCallback(() => {
     setIsFocused(false);
     setIsSearchFocused(false);
     Keyboard.dismiss();
-  };
+  }, [setIsSearchFocused]);
 
-  const handleSelectDestination = (item: Destination | PresetLocation) => {
+  const handleSelectDestination = useCallback((item: Destination | PresetLocation) => {
     selectPresetDestination(item as any);
     setInputText('');
     handleDismissDropdown();
-  };
+  }, [selectPresetDestination, handleDismissDropdown]);
+
+  const keyExtractor = useCallback((item: Destination | PresetLocation, index: number): string => {
+    if ('id' in item && typeof item.id === 'string') {
+      return item.id;
+    }
+    return `item_${item.latitude.toFixed(4)}_${item.longitude.toFixed(4)}_${index}`;
+  }, []);
+
+  const renderItem = useCallback(({ item }: { item: Destination | PresetLocation }) => {
+    const isPreset = 'iconName' in item;
+    return (
+      <TouchableOpacity
+        style={styles.dropdownItem}
+        onPress={() => handleSelectDestination(item)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.itemIconContainer}>
+          <Ionicons
+            name={isPreset ? (item as any).iconName : 'location-sharp'}
+            size={16}
+            color="#818CF8"
+          />
+        </View>
+        <View style={styles.itemTextContainer}>
+          <Text style={styles.itemTitle} numberOfLines={1}>
+            {item.title}
+          </Text>
+          <Text style={styles.itemAddress} numberOfLines={1}>
+            {item.address}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={14} color="#475569" />
+      </TouchableOpacity>
+    );
+  }, [handleSelectDestination]);
 
   const filteredPresets = useMemo(() => {
     if (selectedCategory === 'All') return PRESET_DESTINATIONS;
@@ -194,47 +230,22 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
             <FlatList
               data={searchResults.length > 0 ? searchResults : filteredPresets}
-              keyExtractor={(item, index): string => {
-                if ('id' in item && typeof item.id === 'string') {
-                  return item.id;
-                }
-                return `item_${item.latitude}_${item.longitude}_${index}`;
-              }}
+              keyExtractor={keyExtractor}
+              renderItem={renderItem}
               keyboardShouldPersistTaps="always"
-              renderItem={({ item }) => {
-                const isPreset = 'iconName' in item;
-                return (
-                  <TouchableOpacity
-                    style={styles.dropdownItem}
-                    onPress={() => handleSelectDestination(item)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.itemIconContainer}>
-                      <Ionicons
-                        name={isPreset ? (item as any).iconName : 'location-sharp'}
-                        size={16}
-                        color="#818CF8"
-                      />
-                    </View>
-                    <View style={styles.itemTextContainer}>
-                      <Text style={styles.itemTitle} numberOfLines={1}>
-                        {item.title}
-                      </Text>
-                      <Text style={styles.itemAddress} numberOfLines={1}>
-                        {item.address}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={14} color="#475569" />
-                  </TouchableOpacity>
-                );
-              }}
+              initialNumToRender={8}
+              maxToRenderPerBatch={8}
+              windowSize={5}
+              removeClippedSubviews={Platform.OS === 'android'}
             />
           </View>
         )}
       </View>
     </>
   );
-};
+});
+
+SearchBar.displayName = 'SearchBar';
 
 const styles = StyleSheet.create({
   container: {

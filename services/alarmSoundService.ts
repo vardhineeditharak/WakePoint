@@ -132,12 +132,16 @@ class AlarmSoundService {
     }
   }
 
+  private alarmSessionId: number = 0;
+  private previewSessionId: number = 0;
+
   /**
    * Starts the loud continuous alarm: audio loop + repeating vibration
    */
   public async startAlarm(tone: AlarmTone = 'radar', vibration: VibrationStyle = 'pulse'): Promise<void> {
     if (this.isRinging) return;
     this.isRinging = true;
+    const sessionId = ++this.alarmSessionId;
 
     try {
       await this.ensureAudioMode();
@@ -155,6 +159,14 @@ class AlarmSoundService {
           volume: 1.0,
         }
       );
+
+      // Guard against race conditions where stopAlarm was called during sound creation
+      if (this.alarmSessionId !== sessionId || !this.isRinging) {
+        sound.stopAsync().catch(() => {});
+        sound.unloadAsync().catch(() => {});
+        return;
+      }
+
       this.currentSound = sound;
       await sound.playAsync();
       console.log(`[AlarmSoundService] Loud alarm started with tone: ${tone}`);
@@ -168,6 +180,8 @@ class AlarmSoundService {
    */
   public async stopAlarm(): Promise<void> {
     this.isRinging = false;
+    this.alarmSessionId++;
+    this.previewSessionId++;
     this.stopVibration();
     await this.stopAlarmSoundOnly();
     await this.stopPreviewSoundOnly();
@@ -202,6 +216,7 @@ class AlarmSoundService {
    * Plays a brief 2-second preview of a tone for settings configuration
    */
   public async previewTone(tone: AlarmTone): Promise<void> {
+    const sessionId = ++this.previewSessionId;
     try {
       await this.ensureAudioMode();
       await this.stopPreviewSoundOnly();
@@ -215,6 +230,13 @@ class AlarmSoundService {
           volume: 0.9,
         }
       );
+
+      if (this.previewSessionId !== sessionId) {
+        sound.stopAsync().catch(() => {});
+        sound.unloadAsync().catch(() => {});
+        return;
+      }
+
       this.previewSound = sound;
       await sound.playAsync();
     } catch (e: any) {

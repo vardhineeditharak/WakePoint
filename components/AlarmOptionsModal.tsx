@@ -31,7 +31,7 @@ const VIBRATION_OPTIONS: { key: AlarmOptions['vibrationStyle']; label: string; d
   { key: 'gentle', label: 'Soft Haptic Taps', desc: 'Subtle periodic vibrations' },
 ];
 
-export const AlarmOptionsModal: React.FC<AlarmOptionsModalProps> = ({ visible, onClose }) => {
+export const AlarmOptionsModal: React.FC<AlarmOptionsModalProps> = React.memo(({ visible, onClose }) => {
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, 16) + 12;
   const {
@@ -43,10 +43,14 @@ export const AlarmOptionsModal: React.FC<AlarmOptionsModalProps> = ({ visible, o
     stopAlarmRinging,
   } = useWakePoint();
 
-  const handleSelectSound = (tone: AlarmTone) => {
+  const handleSelectSound = React.useCallback((tone: AlarmTone) => {
     setAlarmOptions({ soundTone: tone });
     previewAlarmTone(tone);
-  };
+  }, [setAlarmOptions, previewAlarmTone]);
+
+  if (!visible) {
+    return null;
+  }
 
   return (
     <Modal
@@ -188,7 +192,9 @@ export const AlarmOptionsModal: React.FC<AlarmOptionsModalProps> = ({ visible, o
       </View>
     </Modal>
   );
-};
+});
+
+AlarmOptionsModal.displayName = 'AlarmOptionsModal';
 
 const styles = StyleSheet.create({
   modalOverlay: {

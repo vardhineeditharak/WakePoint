@@ -38,9 +38,14 @@ export interface BackgroundTarget {
 let sharedTarget: BackgroundTarget | null = null;
 let hasTriggeredAlarmInMemory = false;
 
+let lastBgNotifDistance: number | null = null;
+let lastBgNotifTimestamp: number = 0;
+
 export function setSharedBackgroundTarget(target: BackgroundTarget | null) {
   sharedTarget = target;
   hasTriggeredAlarmInMemory = false;
+  lastBgNotifDistance = null;
+  lastBgNotifTimestamp = 0;
 }
 
 export function getSharedBackgroundTarget(): BackgroundTarget | null {
@@ -279,8 +284,17 @@ TaskManager.defineTask(WAKEPOINT_PROXIMITY_TASK, async ({ data, error }) => {
 
       console.log(`[WAKEPOINT_PROXIMITY_TASK] BG Distance: ${distance}m (Radius: ${target.radius}m)`);
 
-      // Update sticky notification with fresh distance periodically
-      postOrUpdateActiveNotification(target.title, target.radius, distance).catch(() => {});
+      // Update sticky notification with fresh distance periodically (throttled to avoid notification manager thrashing)
+      const shouldUpdateBgNotif =
+        lastBgNotifDistance === null ||
+        Math.abs(distance - lastBgNotifDistance) >= 50 ||
+        Date.now() - lastBgNotifTimestamp >= 30000;
+
+      if (shouldUpdateBgNotif) {
+        lastBgNotifDistance = distance;
+        lastBgNotifTimestamp = Date.now();
+        postOrUpdateActiveNotification(target.title, target.radius, distance).catch(() => {});
+      }
 
       if (distance <= target.radius) {
         hasTriggeredAlarmInMemory = true;

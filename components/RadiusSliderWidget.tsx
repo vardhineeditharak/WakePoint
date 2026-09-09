@@ -29,7 +29,25 @@ const PRESET_RADII = [
   { label: '5 km', value: 5000 },
 ];
 
-export const RadiusSliderWidget: React.FC = () => {
+function formatDistance(meters: number): string {
+  const rounded = Math.round(meters);
+  if (rounded >= 1000) {
+    return `${(rounded / 1000).toFixed(1)} km`;
+  }
+  return `${rounded} m`;
+}
+
+function formatDuration(seconds: number): string {
+  const mins = Math.ceil(seconds / 60);
+  if (mins >= 60) {
+    const hrs = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    return `${hrs}h ${remMins}m`;
+  }
+  return `${mins} min`;
+}
+
+export const RadiusSliderWidget: React.FC = React.memo(() => {
   const insets = useSafeAreaInsets();
   const bottomOffset = Math.max(insets.bottom, 12) + 8;
   const {
@@ -49,21 +67,21 @@ export const RadiusSliderWidget: React.FC = () => {
   const [isToggling, setIsToggling] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
 
-  const toggleMinimize = () => {
+  const toggleMinimize = React.useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setIsMinimized((prev) => !prev);
-  };
+  }, []);
 
-  const handleToggle = async () => {
+  const handleToggle = React.useCallback(async () => {
     setIsToggling(true);
     try {
       await toggleAlarm();
     } finally {
       setIsToggling(false);
     }
-  };
+  }, [toggleAlarm]);
 
-  const handleDiscardLocation = () => {
+  const handleDiscardLocation = React.useCallback(() => {
     if (isAlarmActive) {
       Alert.alert(
         'Discard Destination',
@@ -83,25 +101,15 @@ export const RadiusSliderWidget: React.FC = () => {
     } else {
       setDestination(null);
     }
-  };
+  }, [isAlarmActive, toggleAlarm, setDestination]);
 
-  const formatDistance = (meters: number): string => {
-    const rounded = Math.round(meters);
-    if (rounded >= 1000) {
-      return `${(rounded / 1000).toFixed(1)} km`;
-    }
-    return `${rounded} m`;
-  };
+  const handleCloseOptions = React.useCallback(() => {
+    setShowOptionsModal(false);
+  }, []);
 
-  const formatDuration = (seconds: number): string => {
-    const mins = Math.ceil(seconds / 60);
-    if (mins >= 60) {
-      const hrs = Math.floor(mins / 60);
-      const remMins = mins % 60;
-      return `${hrs}h ${remMins}m`;
-    }
-    return `${mins} min`;
-  };
+  const handleOpenOptions = React.useCallback(() => {
+    setShowOptionsModal(true);
+  }, []);
 
   if (isSearchFocused) {
     return null;
@@ -111,7 +119,7 @@ export const RadiusSliderWidget: React.FC = () => {
     <View style={[styles.container, { bottom: bottomOffset }]}>
       <AlarmOptionsModal
         visible={showOptionsModal}
-        onClose={() => setShowOptionsModal(false)}
+        onClose={handleCloseOptions}
       />
 
       <View style={[styles.card, isMinimized && styles.cardMinimized]}>
@@ -159,7 +167,7 @@ export const RadiusSliderWidget: React.FC = () => {
             {!isMinimized && (
               <TouchableOpacity
                 style={styles.iconBtn}
-                onPress={() => setShowOptionsModal(true)}
+                onPress={handleOpenOptions}
                 activeOpacity={0.7}
               >
                 <Ionicons name="settings-sharp" size={16} color="#818CF8" />
@@ -328,7 +336,9 @@ export const RadiusSliderWidget: React.FC = () => {
       </View>
     </View>
   );
-};
+});
+
+RadiusSliderWidget.displayName = 'RadiusSliderWidget';
 
 const styles = StyleSheet.create({
   container: {

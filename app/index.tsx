@@ -29,6 +29,17 @@ export default function MainMapScreen() {
     isSearchFocused,
   } = useWakePoint();
 
+  const userLocationRef = useRef(userLocation);
+  const destinationRef = useRef(destination);
+
+  useEffect(() => {
+    userLocationRef.current = userLocation;
+  }, [userLocation]);
+
+  useEffect(() => {
+    destinationRef.current = destination;
+  }, [destination]);
+
   const hasCenteredInitialLocation = useRef(false);
   const prevDestinationRef = useRef<typeof destination>(null);
 
@@ -62,45 +73,61 @@ export default function MainMapScreen() {
     }
   }, [routeCoordinates]);
 
-  const handleCenterUserLocation = async () => {
+  const handleCenterUserLocation = React.useCallback(async () => {
+    const curUserLoc = userLocationRef.current;
     // 1. Instant 0ms response: Fly immediately if we already have coordinates
-    if (userLocation && mapRef.current) {
-      mapRef.current.flyTo(userLocation.coords.latitude, userLocation.coords.longitude, 16);
+    if (curUserLoc && mapRef.current) {
+      mapRef.current.flyTo(curUserLoc.coords.latitude, curUserLoc.coords.longitude, 16);
     }
 
     // 2. Refresh GPS coordinates in parallel
     try {
       const loc = await getCurrentLocation();
-      const target = loc || userLocation;
+      const target = loc || userLocationRef.current;
       if (target && mapRef.current) {
         mapRef.current.flyTo(target.coords.latitude, target.coords.longitude, 16);
       }
     } catch (e) {
       console.warn('[WakePoint] Error centering user position:', e);
     }
-  };
+  }, [getCurrentLocation]);
 
-  const handleCenterDestination = () => {
-    if (destination && mapRef.current) {
-      mapRef.current.flyTo(destination.latitude, destination.longitude, 15);
+  const handleCenterDestination = React.useCallback(() => {
+    const curDest = destinationRef.current;
+    if (curDest && mapRef.current) {
+      mapRef.current.flyTo(curDest.latitude, curDest.longitude, 15);
     }
-  };
+  }, []);
 
-  const handleMapPress = (coord: { latitude: number; longitude: number }) => {
-    setDestinationFromCoordinates(coord.latitude, coord.longitude);
-  };
+  const handleMapPress = React.useCallback(
+    (coord: { latitude: number; longitude: number }) => {
+      setDestinationFromCoordinates(coord.latitude, coord.longitude);
+    },
+    [setDestinationFromCoordinates]
+  );
 
-  const handleMarkerDragEnd = (coord: { latitude: number; longitude: number }) => {
-    setDestinationFromCoordinates(coord.latitude, coord.longitude);
-  };
+  const handleMarkerDragEnd = React.useCallback(
+    (coord: { latitude: number; longitude: number }) => {
+      setDestinationFromCoordinates(coord.latitude, coord.longitude);
+    },
+    [setDestinationFromCoordinates]
+  );
 
-  const cycleMapTheme = () => {
+  const cycleMapTheme = React.useCallback(() => {
     setMapTheme((prev) => {
       if (prev === 'dark') return 'satellite';
       if (prev === 'satellite') return 'streets';
       return 'dark';
     });
-  };
+  }, []);
+
+  // Memoize coordinate object to prevent reference churn in WakeMapView
+  const userLat = userLocation?.coords.latitude;
+  const userLng = userLocation?.coords.longitude;
+  const userCoords = React.useMemo(() => {
+    if (userLat == null || userLng == null) return null;
+    return { latitude: userLat, longitude: userLng };
+  }, [userLat, userLng]);
 
   return (
     <View style={styles.container}>
@@ -113,11 +140,7 @@ export default function MainMapScreen() {
       {/* Interactive Map Engine */}
       <WakeMapView
         ref={mapRef}
-        userLocation={
-          userLocation
-            ? { latitude: userLocation.coords.latitude, longitude: userLocation.coords.longitude }
-            : null
-        }
+        userLocation={userCoords}
         destination={destination}
         radius={radius}
         isAlarmActive={isAlarmActive}
